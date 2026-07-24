@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\LegalController;
 use App\Http\Controllers\Settings\ProfileController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -26,6 +27,8 @@ Route::get('/advertise', function () {
 Route::get('/help', function () {
     return Inertia::render('public/help');
 })->name('help');
+
+Route::get('/legal/{document}', [LegalController::class, 'show'])->name('legal.show');
 
 Route::get('/dashboard', function () {
     return Inertia::render('dashboard/index');

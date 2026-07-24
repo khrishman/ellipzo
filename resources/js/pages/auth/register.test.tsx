@@ -49,7 +49,7 @@ beforeEach(() => {
 });
 
 describe('Register page', () => {
-    it('submits name, email, and password fields to /register', async () => {
+    it('submits name, email, password, and an accepted terms flag to /register', async () => {
         const user = userEvent.setup();
         render(<Register />);
 
@@ -57,6 +57,7 @@ describe('Register page', () => {
         await user.type(screen.getByLabelText('Email'), 'ada@example.com');
         await user.type(screen.getByLabelText('Password'), 'Password!123');
         await user.type(screen.getByLabelText('Confirm password'), 'Password!123');
+        await user.click(screen.getByRole('checkbox'));
         await user.click(screen.getByRole('button', { name: 'Create account' }));
 
         expect(mockPost).toHaveBeenCalledWith('/register', {
@@ -64,7 +65,29 @@ describe('Register page', () => {
             email: 'ada@example.com',
             password: 'Password!123',
             password_confirmation: 'Password!123',
+            terms: true,
         });
+    });
+
+    it('renders the terms checkbox unchecked by default', () => {
+        render(<Register />);
+
+        expect(screen.getByRole('checkbox')).not.toBeChecked();
+    });
+
+    it('links the terms checkbox label to the Terms of Service and Privacy Policy pages', () => {
+        render(<Register />);
+
+        expect(screen.getByRole('link', { name: 'Terms of Service' })).toHaveAttribute('href', '/legal/terms');
+        expect(screen.getByRole('link', { name: 'Privacy Policy' })).toHaveAttribute('href', '/legal/privacy');
+    });
+
+    it('shows a terms validation error returned from the server', () => {
+        mockErrors.current = { terms: 'Registration is currently unavailable. Please try again later.' };
+        render(<Register />);
+
+        expect(screen.getByRole('checkbox')).toHaveAttribute('aria-invalid', 'true');
+        expect(screen.getByText('Registration is currently unavailable. Please try again later.')).toBeInTheDocument();
     });
 
     it('clears both password fields but keeps name and email after submission finishes', async () => {

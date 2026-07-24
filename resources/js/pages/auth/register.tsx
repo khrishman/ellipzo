@@ -9,6 +9,7 @@ interface RegisterForm {
     email: string;
     password: string;
     password_confirmation: string;
+    terms: boolean;
 }
 
 export default function Register() {
@@ -17,6 +18,7 @@ export default function Register() {
         email: '',
         password: '',
         password_confirmation: '',
+        terms: false,
     });
 
     const submit: FormEventHandler = (e) => {
@@ -122,6 +124,45 @@ export default function Register() {
                     {errors.password_confirmation && (
                         <p id="password-confirmation-error" className="text-body-sm mt-1.5 text-danger-text">
                             {errors.password_confirmation}
+                        </p>
+                    )}
+                </div>
+
+                <div>
+                    <label className="flex items-start gap-2">
+                        <input
+                            id="terms"
+                            name="terms"
+                            type="checkbox"
+                            checked={data.terms}
+                            onChange={(e) => setData('terms', e.target.checked)}
+                            aria-invalid={errors.terms ? 'true' : undefined}
+                            aria-describedby={errors.terms ? 'terms-error' : undefined}
+                            className="focus-ring mt-0.5 size-4 rounded border-neutral-300 text-brand-600"
+                        />
+                        <span className="text-body-sm text-neutral-700">
+                            I agree to the{' '}
+                            <Link
+                                href="/legal/terms"
+                                target="_blank"
+                                className="focus-ring rounded-sm font-medium text-brand-700 hover:text-brand-800"
+                            >
+                                Terms of Service
+                            </Link>{' '}
+                            and{' '}
+                            <Link
+                                href="/legal/privacy"
+                                target="_blank"
+                                className="focus-ring rounded-sm font-medium text-brand-700 hover:text-brand-800"
+                            >
+                                Privacy Policy
+                            </Link>
+                            .
+                        </span>
+                    </label>
+                    {errors.terms && (
+                        <p id="terms-error" className="text-body-sm mt-1.5 text-danger-text">
+                            {errors.terms}
                         </p>
                     )}
                 </div>
