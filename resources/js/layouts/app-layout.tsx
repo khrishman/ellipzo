@@ -1,16 +1,14 @@
 import { Link } from '@inertiajs/react';
 import type { PropsWithChildren } from 'react';
 
-import { AppSidebar, type AppSidebarUser } from '@/components/domain/app-sidebar';
+import { AppSidebar } from '@/components/domain/app-sidebar';
 import { MobileBottomNav } from '@/components/domain/mobile-bottom-nav';
 
 interface AppLayoutProps extends PropsWithChildren {
-    /** No auth system exists yet — pass undefined until real session data is available. */
-    user?: AppSidebarUser;
     pageTitle?: string;
 }
 
-export default function AppLayout({ user, pageTitle, children }: AppLayoutProps) {
+export default function AppLayout({ pageTitle, children }: AppLayoutProps) {
     return (
         <div className="flex min-h-screen bg-neutral-50">
             <a
@@ -20,7 +18,7 @@ export default function AppLayout({ user, pageTitle, children }: AppLayoutProps)
                 Skip to main content
             </a>
 
-            <AppSidebar user={user} />
+            <AppSidebar />
 
             <div className="flex min-w-0 flex-1 flex-col">
                 <header className="flex h-14 items-center border-b border-neutral-200 bg-white px-4 lg:hidden">

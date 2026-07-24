@@ -1,8 +1,17 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+const { mockAuthUser } = vi.hoisted(() => ({
+    mockAuthUser: vi.fn<() => { id: number; name: string; email: string; emailVerifiedAt: string | null } | null>(() => null),
+}));
+
 vi.mock('@inertiajs/react', () => ({
-    usePage: () => ({ url: '/', props: {}, component: '', version: null }),
+    usePage: () => ({
+        url: '/',
+        props: { auth: { user: mockAuthUser() } },
+        component: '',
+        version: null,
+    }),
     Link: ({ href, children, ...props }: { href: string; children: React.ReactNode }) => (
         <a href={href} {...props}>
             {children}
@@ -38,7 +47,7 @@ describe('layout shells', () => {
         expect(screen.getByText('auth content')).toBeInTheDocument();
     });
 
-    it('AppLayout renders a main landmark, does not fabricate a user when none is supplied', () => {
+    it('AppLayout renders a main landmark and does not fabricate a user when auth.user is null', () => {
         render(
             <AppLayout>
                 <p>app content</p>
@@ -48,6 +57,18 @@ describe('layout shells', () => {
         expect(screen.getByRole('main')).toHaveTextContent('app content');
         expect(screen.getByText('Account')).toBeInTheDocument();
         expect(screen.queryByText(/@/)).not.toBeInTheDocument();
+    });
+
+    it('AppLayout shows the real authenticated user from shared Inertia props', () => {
+        mockAuthUser.mockReturnValueOnce({ id: 1, name: 'Ada Lovelace', email: 'ada@example.com', emailVerifiedAt: null });
+        render(
+            <AppLayout>
+                <p>app content</p>
+            </AppLayout>,
+        );
+
+        expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+        expect(screen.getByText('ada@example.com')).toBeInTheDocument();
     });
 
     it('AdminLayout renders a main landmark and the Admin badge', () => {

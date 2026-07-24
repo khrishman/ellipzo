@@ -62,18 +62,13 @@ const sidebarGroups: NavGroup[] = [
     },
 ];
 
-export interface AppSidebarUser {
-    name: string;
-    email: string;
-}
-
-interface AppSidebarProps {
-    /** No auth system exists yet — pass undefined until real session data is available. */
-    user?: AppSidebarUser;
-}
-
-export function AppSidebar({ user }: AppSidebarProps) {
-    const { url } = usePage();
+export function AppSidebar() {
+    const {
+        url,
+        props: {
+            auth: { user },
+        },
+    } = usePage();
     const isActive = (href: string) => url === href || url.startsWith(`${href}/`);
 
     return (

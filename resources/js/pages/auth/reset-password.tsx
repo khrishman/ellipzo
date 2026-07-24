@@ -1,44 +1,40 @@
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, useForm } from '@inertiajs/react';
 import type { FormEventHandler, ReactElement, ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import AuthLayout from '@/layouts/auth-layout';
 
-interface LoginForm {
+interface ResetPasswordForm {
+    token: string;
     email: string;
     password: string;
-    remember: boolean;
+    password_confirmation: string;
 }
 
-interface LoginProps {
-    status?: string;
+interface ResetPasswordProps {
+    token: string;
+    email: string | null;
 }
 
-export default function Login({ status }: LoginProps) {
-    const { data, setData, post, processing, errors, reset } = useForm<LoginForm>({
-        email: '',
+export default function ResetPassword({ token, email }: ResetPasswordProps) {
+    const { data, setData, post, processing, errors, reset } = useForm<ResetPasswordForm>({
+        token,
+        email: email ?? '',
         password: '',
-        remember: false,
+        password_confirmation: '',
     });
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
 
-        post('/login', {
-            onFinish: () => reset('password'),
+        post('/reset-password', {
+            onFinish: () => reset('password', 'password_confirmation'),
         });
     };
 
     return (
         <>
-            <Head title="Log in" />
-
-            {status && (
-                <p className="text-body-sm mb-4 rounded-md border border-status-success-border bg-status-success-bg p-3 text-status-success-text">
-                    {status}
-                </p>
-            )}
-
+            <Head title="Reset password" />
             <form onSubmit={submit} className="space-y-5" noValidate>
                 <div>
                     <label htmlFor="email" className="text-label block text-neutral-700">
@@ -64,19 +60,17 @@ export default function Login({ status }: LoginProps) {
                 </div>
 
                 <div>
-                    <div className="flex items-center justify-between">
-                        <label htmlFor="password" className="text-label block text-neutral-700">
-                            Password
-                        </label>
-                        <Link href="/forgot-password" className="focus-ring text-body-sm rounded-sm text-brand-700 hover:text-brand-800">
-                            Forgot password?
-                        </Link>
-                    </div>
+                    <label htmlFor="password" className="text-label block text-neutral-700">
+                        New password
+                    </label>
+                    <p className="text-caption mt-1 text-neutral-500">
+                        At least 8 characters, with upper and lower case letters, a number, and a symbol.
+                    </p>
                     <input
                         id="password"
                         name="password"
                         type="password"
-                        autoComplete="current-password"
+                        autoComplete="new-password"
                         required
                         value={data.password}
                         onChange={(e) => setData('password', e.target.value)}
@@ -91,35 +85,39 @@ export default function Login({ status }: LoginProps) {
                     )}
                 </div>
 
-                <label className="flex items-center gap-2">
+                <div>
+                    <label htmlFor="password_confirmation" className="text-label block text-neutral-700">
+                        Confirm new password
+                    </label>
                     <input
-                        id="remember"
-                        name="remember"
-                        type="checkbox"
-                        checked={data.remember}
-                        onChange={(e) => setData('remember', e.target.checked)}
-                        className="focus-ring size-4 rounded border-neutral-300 text-brand-600"
+                        id="password_confirmation"
+                        name="password_confirmation"
+                        type="password"
+                        autoComplete="new-password"
+                        required
+                        value={data.password_confirmation}
+                        onChange={(e) => setData('password_confirmation', e.target.value)}
+                        aria-invalid={errors.password_confirmation ? 'true' : undefined}
+                        aria-describedby={errors.password_confirmation ? 'password-confirmation-error' : undefined}
+                        className="focus-ring mt-1.5 block w-full rounded-md border border-neutral-300 px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400"
                     />
-                    <span className="text-body-sm text-neutral-700">Remember me</span>
-                </label>
+                    {errors.password_confirmation && (
+                        <p id="password-confirmation-error" className="text-body-sm mt-1.5 text-danger-text">
+                            {errors.password_confirmation}
+                        </p>
+                    )}
+                </div>
 
                 <Button type="submit" className="w-full" isLoading={processing}>
-                    Log in
+                    Reset password
                 </Button>
-
-                <p className="text-body-sm text-center text-neutral-500">
-                    Don&apos;t have an account?{' '}
-                    <Link href="/register" className="focus-ring rounded-sm font-medium text-brand-700 hover:text-brand-800">
-                        Get started
-                    </Link>
-                </p>
             </form>
         </>
     );
 }
 
-Login.layout = (page: ReactElement) => (
-    <AuthLayout title="Log in" description="Access your Ellipzo account.">
+ResetPassword.layout = (page: ReactElement) => (
+    <AuthLayout title="Reset your password" description="Choose a new password for your account.">
         {page as ReactNode}
     </AuthLayout>
 );

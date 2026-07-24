@@ -15,7 +15,12 @@ const primaryLinks: NavItem[] = [
 ];
 
 export function PublicNav() {
-    const { url } = usePage();
+    const {
+        url,
+        props: {
+            auth: { user },
+        },
+    } = usePage();
     const [isOpen, setIsOpen] = useState(false);
 
     const isActive = (href: string) => url === href || url.startsWith(`${href}/`);
@@ -44,12 +49,20 @@ export function PublicNav() {
                 </nav>
 
                 <div className="hidden items-center gap-2 lg:flex">
-                    <Button asChild variant="ghost" size="sm">
-                        <Link href="/login">Log in</Link>
-                    </Button>
-                    <Button asChild variant="primary" size="sm">
-                        <Link href="/register">Get started</Link>
-                    </Button>
+                    {user ? (
+                        <Button asChild variant="primary" size="sm">
+                            <Link href="/dashboard">Dashboard</Link>
+                        </Button>
+                    ) : (
+                        <>
+                            <Button asChild variant="ghost" size="sm">
+                                <Link href="/login">Log in</Link>
+                            </Button>
+                            <Button asChild variant="primary" size="sm">
+                                <Link href="/register">Get started</Link>
+                            </Button>
+                        </>
+                    )}
                 </div>
 
                 <Sheet open={isOpen} onOpenChange={setIsOpen}>
@@ -79,12 +92,20 @@ export function PublicNav() {
                             ))}
                         </nav>
                         <div className="mt-auto flex flex-col gap-2 border-t border-neutral-200 p-4">
-                            <Button asChild variant="secondary" onClick={() => setIsOpen(false)}>
-                                <Link href="/login">Log in</Link>
-                            </Button>
-                            <Button asChild variant="primary" onClick={() => setIsOpen(false)}>
-                                <Link href="/register">Get started</Link>
-                            </Button>
+                            {user ? (
+                                <Button asChild variant="primary" onClick={() => setIsOpen(false)}>
+                                    <Link href="/dashboard">Dashboard</Link>
+                                </Button>
+                            ) : (
+                                <>
+                                    <Button asChild variant="secondary" onClick={() => setIsOpen(false)}>
+                                        <Link href="/login">Log in</Link>
+                                    </Button>
+                                    <Button asChild variant="primary" onClick={() => setIsOpen(false)}>
+                                        <Link href="/register">Get started</Link>
+                                    </Button>
+                                </>
+                            )}
                         </div>
                     </SheetContent>
                 </Sheet>

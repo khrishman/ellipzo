@@ -26,10 +26,8 @@ Route::get('/help', function () {
     return Inertia::render('public/help');
 })->name('help');
 
-Route::get('/login', function () {
-    return Inertia::render('auth/login');
-})->name('login');
+Route::get('/dashboard', function () {
+    return Inertia::render('dashboard/index');
+})->middleware(['auth', 'verified'])->name('dashboard');
 
-Route::get('/register', function () {
-    return Inertia::render('auth/register');
-})->name('register');
+require __DIR__.'/auth.php';
