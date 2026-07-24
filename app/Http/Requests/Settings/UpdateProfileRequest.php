@@ -67,11 +67,10 @@ class UpdateProfileRequest extends FormRequest
             // Strict Y-m-d only (matches the native <input type="date"> format);
             // plausibility bounds only, no age-eligibility rule here.
             'date_of_birth' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today', 'after_or_equal:1900-01-01'],
-            // Uppercase two-letter format check only. This does not validate
-            // against a canonical list of real, assigned ISO 3166-1 codes -
-            // that belongs to the later country-capability task, which will
-            // own the actual `countries` table.
-            'country_code' => ['nullable', 'string', 'size:2', 'regex:/^[A-Z]{2}$/'],
+            // Validated against the real countries table (Task 7) rather
+            // than a format-only regex - a non-null code must actually
+            // exist as a seeded country.
+            'country_code' => ['nullable', 'string', 'size:2', 'exists:countries,code'],
             // A simple language[-REGION] shape check covering Ellipzo's
             // currently supported locale subset - not complete BCP-47
             // validation (no scripts, variants, or extension subtags).

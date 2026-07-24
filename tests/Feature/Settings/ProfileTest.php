@@ -1,10 +1,19 @@
 <?php
 
+use App\Models\Country;
 use App\Models\User;
 use App\Models\UserProfile;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+
+beforeEach(function () {
+    // country_code is now validated against the real countries table
+    // (Task 7). These fixtures cover every code used across this file's
+    // pre-existing tests, independent of the country-capability seeder.
+    Country::create(['code' => 'US', 'name' => 'United States']);
+    Country::create(['code' => 'NP', 'name' => 'Nepal']);
+});
 
 test('the profile settings page can be rendered', function () {
     $user = User::factory()->create();
@@ -244,6 +253,14 @@ test('a malformed country code is rejected', function () {
     $user = User::factory()->create();
 
     $response = $this->actingAs($user)->patch('/settings/profile', ['country_code' => 'USA']);
+
+    $response->assertSessionHasErrors('country_code');
+});
+
+test('a well-formatted but unseeded/unknown country code is rejected', function () {
+    $user = User::factory()->create();
+
+    $response = $this->actingAs($user)->patch('/settings/profile', ['country_code' => 'ZZ']);
 
     $response->assertSessionHasErrors('country_code');
 });
