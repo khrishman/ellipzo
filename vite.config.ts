@@ -15,6 +15,10 @@ export default defineConfig({
             fonts: [
                 bunny('Inter', {
                     weights: [400, 500, 600, 700],
+                    // The optional `fontaine` package isn't installed; metric-optimized
+                    // fallback generation is a CLS-reduction nicety, not a requirement.
+                    // Disabling it removes the build-time warning without adding a dependency.
+                    optimizedFallbacks: false,
                 }),
             ],
         }),
