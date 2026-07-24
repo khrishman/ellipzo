@@ -4,6 +4,8 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\ConfirmablePasswordController;
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 use App\Http\Controllers\Auth\EmailVerificationPromptController;
+use App\Http\Controllers\Auth\GoogleAccountCompletionController;
+use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisteredUserController;
@@ -34,6 +36,18 @@ Route::middleware('guest')->group(function () {
 
     Route::post('reset-password', [NewPasswordController::class, 'store'])
         ->name('password.store');
+
+    Route::get('auth/google/redirect', [GoogleAuthController::class, 'redirect'])
+        ->name('auth.google.redirect');
+
+    Route::get('auth/google/callback', [GoogleAuthController::class, 'callback'])
+        ->name('auth.google.callback');
+
+    Route::get('auth/google/complete', [GoogleAccountCompletionController::class, 'show'])
+        ->name('auth.google.complete');
+
+    Route::post('auth/google/complete', [GoogleAccountCompletionController::class, 'store'])
+        ->name('auth.google.complete.store');
 });
 
 Route::middleware('auth')->group(function () {

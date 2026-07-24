@@ -127,4 +127,10 @@ describe('Register page', () => {
 
         expect(screen.getByRole('link', { name: 'Log in' })).toHaveAttribute('href', '/login');
     });
+
+    it('links the Google button to the server-side redirect route', () => {
+        render(<Register />);
+
+        expect(screen.getByRole('link', { name: 'Continue with Google' })).toHaveAttribute('href', '/auth/google/redirect');
+    });
 });

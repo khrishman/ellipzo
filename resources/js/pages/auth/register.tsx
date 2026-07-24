@@ -32,6 +32,17 @@ export default function Register() {
     return (
         <>
             <Head title="Get started" />
+
+            <Button asChild variant="secondary" className="w-full">
+                <a href="/auth/google/redirect">Continue with Google</a>
+            </Button>
+
+            <div className="my-5 flex items-center gap-3">
+                <div className="h-px flex-1 bg-neutral-200" />
+                <span className="text-caption text-neutral-500">or</span>
+                <div className="h-px flex-1 bg-neutral-200" />
+            </div>
+
             <form onSubmit={submit} className="space-y-5" noValidate>
                 <div>
                     <label htmlFor="name" className="text-label block text-neutral-700">

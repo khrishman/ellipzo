@@ -41,4 +41,9 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->hasMany(UserConsent::class);
     }
+
+    public function oauthIdentities(): HasMany
+    {
+        return $this->hasMany(OAuthIdentity::class);
+    }
 }

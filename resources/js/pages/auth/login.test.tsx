@@ -98,4 +98,10 @@ describe('Login page', () => {
         expect(screen.getByRole('link', { name: 'Forgot password?' })).toHaveAttribute('href', '/forgot-password');
         expect(screen.getByRole('link', { name: 'Get started' })).toHaveAttribute('href', '/register');
     });
+
+    it('links the Google button to the server-side redirect route', () => {
+        render(<Login />);
+
+        expect(screen.getByRole('link', { name: 'Continue with Google' })).toHaveAttribute('href', '/auth/google/redirect');
+    });
 });
