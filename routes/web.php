@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Settings\ProfileController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -29,5 +30,10 @@ Route::get('/help', function () {
 Route::get('/dashboard', function () {
     return Inertia::render('dashboard/index');
 })->middleware(['auth', 'verified'])->name('dashboard');
+
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('/settings/profile', [ProfileController::class, 'edit'])->name('settings.profile.edit');
+    Route::patch('/settings/profile', [ProfileController::class, 'update'])->name('settings.profile.update');
+});
 
 require __DIR__.'/auth.php';
