@@ -1,4 +1,4 @@
-import { Link } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import { Menu } from 'lucide-react';
 import { type PropsWithChildren, useState } from 'react';
 
@@ -7,12 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 
 interface AdminLayoutProps extends PropsWithChildren {
-    /** No staff permission system exists yet — see AdminNav for how this will be used. */
+    /** Overrides the shared Inertia permission list — mainly for tests. Real pages should omit this and let it come from the session. */
     permissions?: string[];
     pageTitle?: string;
 }
 
 export default function AdminLayout({ permissions, pageTitle, children }: AdminLayoutProps) {
+    const { props } = usePage();
+    const resolvedPermissions = permissions ?? props.auth?.permissions;
     const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     return (
@@ -32,7 +34,7 @@ export default function AdminLayout({ permissions, pageTitle, children }: AdminL
                     <span className="text-caption rounded-full bg-brand-100 px-2 py-0.5 font-semibold text-brand-700">Admin</span>
                 </div>
                 <div className="flex-1 overflow-y-auto px-3 py-4">
-                    <AdminNav permissions={permissions} />
+                    <AdminNav permissions={resolvedPermissions} />
                 </div>
             </aside>
 
@@ -49,7 +51,7 @@ export default function AdminLayout({ permissions, pageTitle, children }: AdminL
                                 <SheetTitle>Admin menu</SheetTitle>
                             </SheetHeader>
                             <div className="px-3" onClick={() => setIsMenuOpen(false)}>
-                                <AdminNav permissions={permissions} />
+                                <AdminNav permissions={resolvedPermissions} />
                             </div>
                         </SheetContent>
                     </Sheet>

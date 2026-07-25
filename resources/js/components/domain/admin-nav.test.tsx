@@ -17,35 +17,49 @@ describe('AdminNav', () => {
         render(<AdminNav />);
 
         expect(screen.getByRole('link', { name: /overview/i })).toBeInTheDocument();
-        expect(screen.getByRole('link', { name: /users/i })).toBeInTheDocument();
-        expect(screen.getByRole('link', { name: /finance/i })).toBeInTheDocument();
-        expect(screen.getByRole('link', { name: /audit/i })).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: /staff access/i })).toBeInTheDocument();
+        // Users/Finance/Audit have no working route yet, so they never
+        // render as links even when every permission is present.
+        expect(screen.queryByRole('link', { name: /^users$/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: /^finance$/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: /^audit$/i })).not.toBeInTheDocument();
     });
 
     it('filters to only the items matching the supplied permissions, but always keeps items with no requirement', () => {
-        render(<AdminNav permissions={['users.view']} />);
+        render(<AdminNav permissions={['admin.overview.view', 'staff.view']} />);
 
-        // Overview has no requiredPermission, so it always renders.
         expect(screen.getByRole('link', { name: /overview/i })).toBeInTheDocument();
-        expect(screen.getByRole('link', { name: /users/i })).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: /staff access/i })).toBeInTheDocument();
 
-        // Everything requiring a permission the user does not hold is hidden.
-        expect(screen.queryByRole('link', { name: /campaigns/i })).not.toBeInTheDocument();
-        expect(screen.queryByRole('link', { name: /finance/i })).not.toBeInTheDocument();
-        expect(screen.queryByRole('link', { name: /audit/i })).not.toBeInTheDocument();
+        // Campaigns requires a permission this list does not include.
+        expect(screen.queryByText(/^campaigns$/i)).not.toBeInTheDocument();
     });
 
-    it('renders nothing beyond permission-free items when the permission list is empty', () => {
+    it('renders nothing when the permission list is empty and every item requires a permission', () => {
         render(<AdminNav permissions={[]} />);
 
-        expect(screen.getByRole('link', { name: /overview/i })).toBeInTheDocument();
-        expect(screen.queryByRole('link', { name: /users/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: /overview/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: /staff access/i })).not.toBeInTheDocument();
     });
 
     it('marks the current route with aria-current="page"', () => {
         render(<AdminNav />);
 
         expect(screen.getByRole('link', { name: /overview/i })).toHaveAttribute('aria-current', 'page');
-        expect(screen.getByRole('link', { name: /users/i })).not.toHaveAttribute('aria-current');
+    });
+
+    it('renders unimplemented sections as disabled, non-interactive items rather than links', () => {
+        render(<AdminNav permissions={['users.view', 'campaigns.moderate', 'audit.view']} />);
+
+        const users = screen.getByText(/^users$/i);
+        expect(users.closest('a')).toBeNull();
+        expect(users.closest('[aria-disabled="true"]')).not.toBeNull();
+
+        const campaigns = screen.getByText(/^campaigns$/i);
+        expect(campaigns.closest('a')).toBeNull();
+
+        // None of the unimplemented items are ever links, regardless of href.
+        expect(screen.queryByRole('link', { name: /users/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: /campaigns/i })).not.toBeInTheDocument();
     });
 });

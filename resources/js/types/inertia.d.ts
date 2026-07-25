@@ -12,6 +12,8 @@ declare module '@inertiajs/core' {
         sharedPageProps: {
             auth: {
                 user: AuthUser | null;
+                /** Display-only. See HandleInertiaRequests::share(). */
+                permissions: string[];
             };
         };
     }

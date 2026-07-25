@@ -5,12 +5,17 @@ export interface NavItem {
     href: string;
     icon?: LucideIcon;
     /**
-     * Not enforced yet — no permission system exists (Phase 1 staff
-     * roles/permissions land in a later task). Items without this render
-     * unconditionally; it exists so admin navigation is ready to filter on
-     * once real permission data is available.
+     * Display-only filtering, never an authorization boundary. Items
+     * without this render unconditionally; every route this links to
+     * independently re-checks the same permission server-side.
      */
     requiredPermission?: string;
+    /**
+     * Set to false when the linked route does not exist yet. Renders as a
+     * disabled, non-interactive item instead of a link, so an unfinished
+     * section is never one click away from a 404. Defaults to true.
+     */
+    implemented?: boolean;
 }
 
 export interface NavGroup {

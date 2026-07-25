@@ -46,6 +46,11 @@ class HandleInertiaRequests extends Middleware
                     'email' => $user->email,
                     'emailVerifiedAt' => $user->email_verified_at?->toIso8601String(),
                 ] : null,
+                // Display-only, for filtering admin navigation. Every
+                // admin route independently re-checks the same
+                // permissions server-side (routes/admin.php) - this list
+                // is never itself an authorization boundary.
+                'permissions' => $user ? $user->getAllPermissions()->pluck('name') : [],
             ],
         ];
     }
