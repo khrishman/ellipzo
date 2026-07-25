@@ -50,7 +50,11 @@ Route::middleware('guest')->group(function () {
         ->name('auth.google.complete.store');
 });
 
-Route::middleware('auth')->group(function () {
+// Restricted (suspended/closed) users must still be able to verify email
+// or confirm their password is theirs in principle, but per Task 10 they
+// see the account-restriction response instead - 'account.protected' is
+// included here deliberately, unlike on the logout route below.
+Route::middleware(['auth', 'account.protected'])->group(function () {
     Route::get('verify-email', EmailVerificationPromptController::class)
         ->name('verification.notice');
 
@@ -66,7 +70,11 @@ Route::middleware('auth')->group(function () {
         ->name('password.confirm');
 
     Route::post('confirm-password', [ConfirmablePasswordController::class, 'store']);
+});
 
+// Logout must remain reachable by a restricted user - deliberately
+// excluded from 'account.protected'.
+Route::middleware('auth')->group(function () {
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
         ->name('logout');
 });

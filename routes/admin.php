@@ -4,11 +4,14 @@ use App\Http\Controllers\Admin\AdminOverviewController;
 use App\Http\Controllers\Admin\StaffAccessController;
 use Illuminate\Support\Facades\Route;
 
-// Every route below requires a verified, authenticated session plus its
-// own specific permission - there is no shared "is staff" gate. A normal
-// authenticated user reaches the permission middleware and gets a 403;
-// they never reach a controller.
-Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(function () {
+// Every route below requires a verified, authenticated, non-restricted
+// session plus its own specific permission - there is no shared "is
+// staff" gate. A normal authenticated user reaches the permission
+// middleware and gets a 403; they never reach a controller. A
+// suspended/closed staff member is blocked by 'account.protected' before
+// 'verified' or any permission check ever runs, regardless of what
+// Spatie permissions they still hold.
+Route::middleware(['auth', 'account.protected', 'verified'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/', [AdminOverviewController::class, 'show'])
         ->middleware('permission:admin.overview.view')
         ->name('overview');

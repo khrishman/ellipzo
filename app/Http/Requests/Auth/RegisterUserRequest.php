@@ -11,12 +11,6 @@ use Illuminate\Validation\Rules\Password;
 class RegisterUserRequest extends FormRequest
 {
     /**
-     * The legal documents that must be published before registration can
-     * succeed at all, since accepting them is part of this same request.
-     */
-    private const REQUIRED_DOCUMENTS = ['terms', 'privacy'];
-
-    /**
      * Determine if the user is authorized to make this request.
      */
     public function authorize(): bool
@@ -64,7 +58,7 @@ class RegisterUserRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
-            foreach (self::REQUIRED_DOCUMENTS as $document) {
+            foreach (config('legal.required_documents') as $document) {
                 if (! (bool) config("legal.documents.{$document}.published")) {
                     $validator->errors()->add(
                         'terms',

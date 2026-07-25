@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\AccountStatus;
 use App\Models\OAuthIdentity;
 use App\Models\User;
 use App\Models\UserConsent;
@@ -73,6 +74,15 @@ test('a published, accepted completion atomically creates the user, identity, an
     expect(UserConsent::where('user_id', $user->id)->count())->toBe(2);
     expect(UserConsent::where('user_id', $user->id)->where('document', 'terms')->where('method', 'google_oauth')->exists())->toBeTrue();
     expect(UserConsent::where('user_id', $user->id)->where('document', 'privacy')->where('method', 'google_oauth')->exists())->toBeTrue();
+});
+
+test('a Google-completed account defaults to an active account status', function () {
+    seedPendingGoogleIdentity();
+
+    $this->post('/auth/google/complete', ['terms' => true]);
+
+    $user = User::where('email', 'ada@example.com')->firstOrFail();
+    expect($user->account_status)->toBe(AccountStatus::Active);
 });
 
 test('a successful completion regenerates the session and clears the pending identity', function () {

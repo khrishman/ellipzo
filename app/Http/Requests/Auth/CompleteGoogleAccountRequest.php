@@ -9,13 +9,6 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class CompleteGoogleAccountRequest extends FormRequest
 {
-    /**
-     * The legal documents that must be published before a Google-sourced
-     * account can be created, mirroring RegisterUserRequest's gate for
-     * the ordinary registration form.
-     */
-    private const REQUIRED_DOCUMENTS = ['terms', 'privacy'];
-
     public function authorize(): bool
     {
         return true;
@@ -41,7 +34,7 @@ class CompleteGoogleAccountRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
-            foreach (self::REQUIRED_DOCUMENTS as $document) {
+            foreach (config('legal.required_documents') as $document) {
                 if (! (bool) config("legal.documents.{$document}.published")) {
                     $validator->errors()->add(
                         'terms',

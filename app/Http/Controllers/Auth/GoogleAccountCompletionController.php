@@ -19,8 +19,6 @@ use Inertia\Response;
 
 class GoogleAccountCompletionController extends Controller
 {
-    private const REQUIRED_DOCUMENTS = ['terms', 'privacy'];
-
     /**
      * Show the completion/consent screen for a pending Google identity.
      * There is nothing to show without a live, unexpired pending
@@ -93,7 +91,7 @@ class GoogleAccountCompletionController extends Controller
 
     private function requiredDocumentsPublished(): bool
     {
-        foreach (self::REQUIRED_DOCUMENTS as $document) {
+        foreach (config('legal.required_documents') as $document) {
             if (! (bool) config("legal.documents.{$document}.published")) {
                 return false;
             }

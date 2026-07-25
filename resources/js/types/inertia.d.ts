@@ -14,6 +14,8 @@ declare module '@inertiajs/core' {
                 user: AuthUser | null;
                 /** Display-only. See HandleInertiaRequests::share(). */
                 permissions: string[];
+                /** 'active' | 'limited' | 'suspended' | 'closed', or undefined when logged out. */
+                accountStatus?: string;
             };
         };
     }

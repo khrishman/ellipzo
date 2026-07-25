@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureAccountCanAccessProtectedRoutes;
 use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Foundation\Application;
@@ -24,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => RoleMiddleware::class,
             'permission' => PermissionMiddleware::class,
             'role_or_permission' => RoleOrPermissionMiddleware::class,
+            'account.protected' => EnsureAccountCanAccessProtectedRoutes::class,
         ]);
         // ThrottleRequests is one of Laravel's own priority-sorted
         // middleware; PermissionMiddleware is not. Without an explicit
@@ -46,6 +48,19 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->appendToPriorityList(
             after: AuthenticatesRequests::class,
             append: PermissionMiddleware::class,
+        );
+        // Required order is auth -> account-status -> verified ->
+        // permission (Task 10). Inserting this *after* the
+        // PermissionMiddleware call above, targeting the same anchor,
+        // bumps PermissionMiddleware one slot later - the net effect is
+        // Authenticate -> EnsureAccountCanAccessProtectedRoutes ->
+        // PermissionMiddleware -> ThrottleRequests. Verified via
+        // reflection on the live priority list, not assumed, given the
+        // Task 9.1 lesson that declaration order alone is not reliable
+        // once the 'web' group's own priority-listed members are involved.
+        $middleware->appendToPriorityList(
+            after: AuthenticatesRequests::class,
+            append: EnsureAccountCanAccessProtectedRoutes::class,
         );
     })
     ->withExceptions(function (Exceptions $exceptions): void {

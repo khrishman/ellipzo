@@ -51,6 +51,20 @@ class HandleInertiaRequests extends Middleware
                 // permissions server-side (routes/admin.php) - this list
                 // is never itself an authorization boundary.
                 'permissions' => $user ? $user->getAllPermissions()->pluck('name') : [],
+                // Just the status value, not the full eligibility
+                // assessment - eligibility is computed on-demand only
+                // where it's actually needed (the dashboard), not on
+                // every request.
+                //
+                // Only a genuinely absent (guest) user may produce null
+                // here. An authenticated, persisted user must always have
+                // a valid AccountStatus - the model's own default
+                // guarantees this in-memory with no refresh() needed, and
+                // the database column default backs it up on every row.
+                // If that invariant is ever broken, ->value below throws
+                // rather than silently presenting a missing status as
+                // null or as a default of "active".
+                'accountStatus' => $user ? $user->account_status->value : null,
             ],
         ];
     }

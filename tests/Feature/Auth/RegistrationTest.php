@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\AccountStatus;
 use App\Models\User;
 use App\Models\UserConsent;
 use Illuminate\Auth\Events\Registered;
@@ -48,7 +49,20 @@ test('a new user can register with valid data', function () {
     expect($user->name)->toBe('Ada Lovelace');
     expect($user->email_verified_at)->toBeNull();
 
-    Event::assertDispatched(Registered::class, fn (Registered $event) => $event->user->is($user));
+    Event::assertDispatched(Registered::class, fn (Registered $event) => $event->user->id === $user->id);
+});
+
+test('a newly registered password account defaults to an active account status', function () {
+    $this->post('/register', [
+        'name' => 'Ada Lovelace',
+        'email' => 'ada@example.com',
+        'password' => 'Password!123',
+        'password_confirmation' => 'Password!123',
+        'terms' => true,
+    ]);
+
+    $user = User::where('email', 'ada@example.com')->firstOrFail();
+    expect($user->account_status)->toBe(AccountStatus::Active);
 });
 
 test('registration normalizes the email address to lowercase and trimmed before storing', function () {

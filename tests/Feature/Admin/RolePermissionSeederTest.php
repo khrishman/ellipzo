@@ -45,6 +45,19 @@ test('no earner or advertiser role is ever created by the seeder', function () {
     expect(Role::whereIn('name', ['earner', 'advertiser'])->exists())->toBeFalse();
 });
 
+test('only Administrator receives users.status.manage, and users.limit is unaffected', function () {
+    (new RolePermissionSeeder)->run();
+
+    expect(Role::findByName('administrator')->hasPermissionTo('users.status.manage'))->toBeTrue();
+    expect(Role::findByName('moderator')->hasPermissionTo('users.status.manage'))->toBeFalse();
+    expect(Role::findByName('finance-operator')->hasPermissionTo('users.status.manage'))->toBeFalse();
+    expect(Role::findByName('support-agent')->hasPermissionTo('users.status.manage'))->toBeFalse();
+
+    // users.limit keeps its existing, separate meaning - untouched by
+    // adding the new permission alongside it.
+    expect(Role::findByName('administrator')->hasPermissionTo('users.limit'))->toBeTrue();
+});
+
 test('the seeder clears the Spatie permission cache', function () {
     $registrar = app(PermissionRegistrar::class);
     $cache = $registrar->getCacheRepository();

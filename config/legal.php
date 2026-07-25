@@ -29,4 +29,19 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Required Documents
+    |--------------------------------------------------------------------------
+    |
+    | The single canonical list of document slugs that must be accepted
+    | (at their current published version above) for registration, Google
+    | account completion, and eligibility assessment alike. A document
+    | published above but not listed here is informational only - it
+    | never gates registration or eligibility.
+    |
+    */
+
+    'required_documents' => ['terms', 'privacy'],
+
 ];
