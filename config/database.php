@@ -1,7 +1,18 @@
 <?php
 
+use App\Support\Mysql8ConcurrencyEnvironmentLoader;
 use Illuminate\Support\Str;
 use Pdo\Mysql;
+
+// The isolated MySQL 8 concurrency-test environment (docker-compose.mysql8.yml)
+// keeps its own credentials in .env.mysql8.local, entirely separate from the
+// application's real .env - loaded here, not merged into it, so the
+// mysql_concurrency connection below is the only thing that ever reads
+// these MYSQL8_* values. Structurally restricted to exactly the variable
+// names that connection needs (see the loader itself) - a missing file is a
+// safe no-op; a malformed one fails closed with a generic error rather than
+// booting silently on a broken config.
+Mysql8ConcurrencyEnvironmentLoader::load(base_path());
 
 return [
 
@@ -81,6 +92,31 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
+        // Isolated MySQL 8 environment for Phase 2 ledger concurrency tests
+        // only (docker-compose.mysql8.yml). Deliberately reads only its own
+        // MYSQL8_* names, loaded above from .env.mysql8.local - never DB_*,
+        // never the 'mysql' connection's own environment variables, so this
+        // can never silently resolve to ellipzo_app/MariaDB by falling back
+        // to a shared variable name.
+        'mysql_concurrency' => [
+            'driver' => 'mysql',
+            'host' => env('MYSQL8_HOST', '127.0.0.1'),
+            'port' => env('MYSQL8_PORT', '3307'),
+            'database' => env('MYSQL8_DATABASE'),
+            'username' => env('MYSQL8_USERNAME'),
+            'password' => env('MYSQL8_PASSWORD', ''),
+            'unix_socket' => '',
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                Mysql::ATTR_SSL_CA => env('MYSQL8_ATTR_SSL_CA'),
             ]) : [],
         ],
 

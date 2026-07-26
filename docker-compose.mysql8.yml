@@ -1,0 +1,45 @@
+# Isolated MySQL 8 environment for Phase 2 ledger/concurrency testing only.
+#
+# Entirely separate from the XAMPP MariaDB service that backs normal
+# development (ellipzo_app, port 3306) - this container binds to
+# 127.0.0.1:3307, uses its own named volume, and never touches XAMPP's
+# data directory or configuration in any way.
+#
+# Invoke every command against this file with the matching env file
+# explicitly named, since its variable names (MYSQL8_*) intentionally
+# do not match what the official mysql image itself expects
+# (MYSQL_ROOT_PASSWORD, MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD):
+#
+#   docker compose --env-file .env.mysql8.local -f docker-compose.mysql8.yml up -d
+#
+# See docs/memory.md for the full lifecycle/teardown command reference.
+
+services:
+  mysql8-test:
+    image: mysql:8.0.46
+    container_name: ellipzo-mysql8-test
+    restart: "no"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL8_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL8_DATABASE}
+      MYSQL_USER: ${MYSQL8_USERNAME}
+      MYSQL_PASSWORD: ${MYSQL8_PASSWORD}
+    ports:
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - ellipzo_mysql8_test_data:/var/lib/mysql
+    healthcheck:
+      # Deliberately no -u/-p: mysqladmin ping exits 0 whenever the server
+      # actually answers the protocol handshake, even on "Access denied"
+      # (verified directly against this image - only a genuinely
+      # unreachable server, nothing listening, exits non-zero), so this
+      # confirms MySQL is up without embedding or requiring any credential.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  ellipzo_mysql8_test_data:
+    name: ellipzo_mysql8_test_data
