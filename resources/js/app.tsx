@@ -9,7 +9,7 @@ const appName = import.meta.env.VITE_APP_NAME || 'Ellipzo';
 createInertiaApp({
     title: (title) => (title ? `${title} - ${appName}` : appName),
     resolve: (name) => {
-        const pages = import.meta.glob<{ default: ComponentType }>('./pages/**/*.tsx', { eager: true });
+        const pages = import.meta.glob<{ default: ComponentType }>(['./pages/**/*.tsx', '!./pages/**/*.test.tsx'], { eager: true });
         const page = pages[`./pages/${name}.tsx`];
 
         if (!page) {
