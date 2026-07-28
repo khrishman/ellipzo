@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Domain\Wallet\Models;
 
 use App\Domain\Wallet\Enums\LedgerEntryType;
+use App\Domain\Wallet\Exceptions\LedgerInvariantViolationException;
+use App\Domain\Wallet\Services\LedgerWriteContext;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
@@ -12,10 +14,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use LogicException;
 
 /**
- * A single debit or credit line within one ledger_transaction. Nothing
- * constructs this model yet - Task 2.4's posting engine is the first and
- * only intended write path. No factory exists; any Task 2.3 test that
- * needs a row inserts one directly, clearly test-only.
+ * A single debit or credit line within one ledger_transaction.
+ * LedgerPostingEngine is the only intended write path - see
+ * LedgerTransaction's own docblock for the exact protection and its
+ * honest limitation. No factory exists; a raw-insertion test helper
+ * bypasses Eloquent for schema-only tests, clearly test-only.
  */
 #[Fillable([])]
 class LedgerEntry extends Model
@@ -50,6 +53,12 @@ class LedgerEntry extends Model
      */
     protected static function booted(): void
     {
+        static::creating(function (): void {
+            if (! LedgerWriteContext::isActive()) {
+                throw new LedgerInvariantViolationException('LedgerEntry records can only be created through LedgerPostingEngine.');
+            }
+        });
+
         static::updating(function (): void {
             throw new LogicException('LedgerEntry records cannot be updated.');
         });

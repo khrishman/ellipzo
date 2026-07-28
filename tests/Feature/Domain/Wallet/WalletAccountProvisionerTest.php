@@ -13,41 +13,6 @@ use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
-/**
- * Installs a narrowly scoped, test-only WalletAccount::creating() listener
- * that forces the next matching row to reuse an already-taken primary
- * key - simulating a genuine PRIMARY KEY collision so the provisioner's
- * catch(UniqueConstraintViolationException) branch is exercised against a
- * real database constraint, never a mock. The original listeners
- * (including HasUlids' own) are snapshotted and restored in finally, so
- * nothing leaks into other tests.
- */
-function withForcedWalletAccountIdCollision(string $forcedId, Closure $shouldForce, Closure $run): void
-{
-    $eventName = 'eloquent.creating: '.WalletAccount::class;
-    $dispatcher = WalletAccount::getEventDispatcher();
-    $originalListeners = $dispatcher->getListeners($eventName);
-
-    $dispatcher->forget($eventName);
-    foreach ($originalListeners as $listener) {
-        $dispatcher->listen($eventName, $listener);
-    }
-    $dispatcher->listen($eventName, function (WalletAccount $model) use ($forcedId, $shouldForce): void {
-        if ($shouldForce($model)) {
-            $model->id = $forcedId;
-        }
-    });
-
-    try {
-        $run();
-    } finally {
-        $dispatcher->forget($eventName);
-        foreach ($originalListeners as $listener) {
-            $dispatcher->listen($eventName, $listener);
-        }
-    }
-}
-
 test('provisionUserAccounts creates all four accounts for a fresh user', function () {
     $user = User::factory()->create();
     $provisioner = new WalletAccountProvisioner;
@@ -294,10 +259,14 @@ test('unique violation with a missing canonical identity row rethrows the origin
         ->where('account_type', WalletAccountType::PlatformFee->value)
         ->exists())->toBeFalse();
 
-    withForcedWalletAccountIdCollision(
-        forcedId: $unrelated->id,
-        shouldForce: fn (WalletAccount $model): bool => $model->account_type === WalletAccountType::PlatformFee,
-        run: function () use ($provisioner): void {
+    $this->withIsolatedCreatingListener(
+        WalletAccount::class,
+        function (WalletAccount $model) use ($unrelated): void {
+            if ($model->account_type === WalletAccountType::PlatformFee) {
+                $model->id = $unrelated->id;
+            }
+        },
+        function () use ($provisioner): void {
             $caught = null;
             try {
                 $provisioner->platformFeeAccount();
@@ -324,11 +293,15 @@ test('a forced collision on the last of four accounts rolls back every newly-ins
     // entirely, so its existence has no bearing on this user's accounts.
     $unrelated = $provisioner->providerClearingAccount('another-unrelated-provider');
 
-    withForcedWalletAccountIdCollision(
-        forcedId: $unrelated->id,
-        shouldForce: fn (WalletAccount $model): bool => $model->account_type === WalletAccountType::AdvertisingReserved
-            && $model->scope_type === WalletAccountScopeType::User,
-        run: function () use ($provisioner, $user): void {
+    $this->withIsolatedCreatingListener(
+        WalletAccount::class,
+        function (WalletAccount $model) use ($unrelated): void {
+            if ($model->account_type === WalletAccountType::AdvertisingReserved
+                && $model->scope_type === WalletAccountScopeType::User) {
+                $model->id = $unrelated->id;
+            }
+        },
+        function () use ($provisioner, $user): void {
             $caught = null;
             try {
                 $provisioner->provisionUserAccounts($user);

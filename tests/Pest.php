@@ -1,8 +1,14 @@
 <?php
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Feature\Domain\Wallet\Concerns\BuildsLedgerPostingFixtures;
 use Tests\Feature\Domain\Wallet\Concerns\InsertsRawLedgerRowsForTesting;
+use Tests\Feature\Domain\Wallet\Concerns\IsolatesModelEventListenersForTesting;
 use Tests\TestCase;
 
 uses(TestCase::class, RefreshDatabase::class)->in('Feature');
-uses(InsertsRawLedgerRowsForTesting::class)->in('Feature/Domain/Wallet');
+uses(
+    InsertsRawLedgerRowsForTesting::class,
+    BuildsLedgerPostingFixtures::class,
+    IsolatesModelEventListenersForTesting::class,
+)->in('Feature/Domain/Wallet');
