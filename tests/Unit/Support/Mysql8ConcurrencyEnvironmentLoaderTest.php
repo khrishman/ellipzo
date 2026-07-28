@@ -16,17 +16,71 @@ function writeFakeMysql8EnvFile(string $dir, string $contents): void
     file_put_contents($dir.'/.env.mysql8.local', $contents);
 }
 
+/**
+ * Snapshots one environment variable across all three storage locations
+ * Laravel's own env()/Env::getRepository() can read from - $_ENV, $_SERVER,
+ * and the process-level getenv()/putenv() store - then clears it from all
+ * three. $_ENV/$_SERVER alone are not sufficient: this process's own
+ * getenv()/putenv() store can independently carry a real value for these
+ * same keys by the time any test runs, regardless of $_ENV/$_SERVER being
+ * clear (confirmed empirically - some part of the test-runner's own
+ * environment handling, not this project's application code, accounts for
+ * that gap, and PutenvAdapter is exactly what Illuminate\Support\Env
+ * consults for it). Never reads or logs the real value anywhere.
+ *
+ * @return array{0: string|null, 1: string|null, 2: string|null}
+ */
+function snapshotAndClearMysql8TestKey(string $key): array
+{
+    $processValue = getenv($key);
+
+    $snapshot = [
+        $_ENV[$key] ?? null,
+        $_SERVER[$key] ?? null,
+        $processValue === false ? null : $processValue,
+    ];
+
+    unset($_ENV[$key], $_SERVER[$key]);
+    putenv($key);
+
+    return $snapshot;
+}
+
+/**
+ * @param  array{0: string|null, 1: string|null, 2: string|null}  $snapshot
+ */
+function restoreMysql8TestKey(string $key, array $snapshot): void
+{
+    [$envValue, $serverValue, $processValue] = $snapshot;
+
+    if ($envValue === null) {
+        unset($_ENV[$key]);
+    } else {
+        $_ENV[$key] = $envValue;
+    }
+
+    if ($serverValue === null) {
+        unset($_SERVER[$key]);
+    } else {
+        $_SERVER[$key] = $serverValue;
+    }
+
+    if ($processValue === null) {
+        putenv($key);
+    } else {
+        putenv("{$key}={$processValue}");
+    }
+}
+
 beforeEach(function () {
-    // The real .env.mysql8.local already loaded these for real during this
-    // process's own app boot (config/database.php runs the real loader
-    // against the real project root, which genuinely has that file) -
-    // snapshot and clear the relevant keys so every test starts from a
-    // clean, observable slate, then restore them afterwards so nothing
-    // else in the suite is affected. Never reads the real file's content.
+    // Snapshot and clear every managed key across all three storage
+    // locations so every test starts from a genuinely clean, observable
+    // slate regardless of how this process's environment got into its
+    // current state, then restore all three afterwards (below) so nothing
+    // else in the suite - or the developer's own shell - is ever affected.
     $this->envSnapshot = [];
     foreach (mysql8LoaderTestManagedKeys() as $key) {
-        $this->envSnapshot[$key] = [$_ENV[$key] ?? null, $_SERVER[$key] ?? null];
-        unset($_ENV[$key], $_SERVER[$key]);
+        $this->envSnapshot[$key] = snapshotAndClearMysql8TestKey($key);
     }
 
     $this->tempDir = sys_get_temp_dir().'/mysql8_loader_test_'.bin2hex(random_bytes(8));
@@ -44,18 +98,8 @@ afterEach(function () {
         rmdir($this->tempDir);
     }
 
-    foreach ($this->envSnapshot as $key => [$envValue, $serverValue]) {
-        if ($envValue === null) {
-            unset($_ENV[$key]);
-        } else {
-            $_ENV[$key] = $envValue;
-        }
-
-        if ($serverValue === null) {
-            unset($_SERVER[$key]);
-        } else {
-            $_SERVER[$key] = $serverValue;
-        }
+    foreach ($this->envSnapshot as $key => $snapshot) {
+        restoreMysql8TestKey($key, $snapshot);
     }
 });
 
@@ -172,4 +216,101 @@ test('the standard mysql and sqlite connections cannot be affected by the loader
 
     expect(env('DB_DATABASE'))->not->toBe('malicious-override-CANARY');
     expect(env('DB_HOST'))->not->toBe('malicious-override-CANARY');
+});
+
+// ---------------------------------------------------------------
+// Regression tests for snapshotAndClearMysql8TestKey()/
+// restoreMysql8TestKey() themselves - the isolation mechanism this whole
+// suite depends on, exercised directly with a dedicated probe key (never
+// a real MYSQL8_* name, so these can never interact with the managed-key
+// list above) and fake canary values only, never a real credential.
+// ---------------------------------------------------------------
+
+test('environment restoration works correctly after normal completion', function () {
+    $probeKey = 'MYSQL8_LOADER_ISOLATION_REGRESSION_PROBE';
+    $_ENV[$probeKey] = 'original-env-value';
+    $_SERVER[$probeKey] = 'original-server-value';
+    putenv("{$probeKey}=original-process-value");
+
+    try {
+        $snapshot = snapshotAndClearMysql8TestKey($probeKey);
+
+        expect($_ENV[$probeKey] ?? null)->toBeNull();
+        expect($_SERVER[$probeKey] ?? null)->toBeNull();
+        expect(getenv($probeKey))->toBeFalse();
+
+        restoreMysql8TestKey($probeKey, $snapshot);
+
+        expect($_ENV[$probeKey])->toBe('original-env-value');
+        expect($_SERVER[$probeKey])->toBe('original-server-value');
+        expect(getenv($probeKey))->toBe('original-process-value');
+    } finally {
+        unset($_ENV[$probeKey], $_SERVER[$probeKey]);
+        putenv($probeKey);
+    }
+});
+
+test('environment restoration still runs after an exception is thrown between clear and restore', function () {
+    $probeKey = 'MYSQL8_LOADER_ISOLATION_REGRESSION_PROBE';
+    $_ENV[$probeKey] = 'original-env-value';
+    $_SERVER[$probeKey] = 'original-server-value';
+    putenv("{$probeKey}=original-process-value");
+
+    try {
+        $snapshot = snapshotAndClearMysql8TestKey($probeKey);
+
+        try {
+            throw new RuntimeException('forced failure between clear and restore, simulating a real test assertion/exception path');
+        } catch (RuntimeException) {
+            // expected
+        } finally {
+            restoreMysql8TestKey($probeKey, $snapshot);
+        }
+
+        expect($_ENV[$probeKey])->toBe('original-env-value');
+        expect($_SERVER[$probeKey])->toBe('original-server-value');
+        expect(getenv($probeKey))->toBe('original-process-value');
+    } finally {
+        unset($_ENV[$probeKey], $_SERVER[$probeKey]);
+        putenv($probeKey);
+    }
+});
+
+test('environment restoration is stable across repeated execution in the same process', function () {
+    $probeKey = 'MYSQL8_LOADER_ISOLATION_REGRESSION_PROBE';
+    $_ENV[$probeKey] = 'original-env-value';
+    $_SERVER[$probeKey] = 'original-server-value';
+    putenv("{$probeKey}=original-process-value");
+
+    try {
+        for ($i = 0; $i < 5; $i++) {
+            $snapshot = snapshotAndClearMysql8TestKey($probeKey);
+
+            expect($_ENV[$probeKey] ?? null)->toBeNull();
+            expect($_SERVER[$probeKey] ?? null)->toBeNull();
+            expect(getenv($probeKey))->toBeFalse();
+
+            restoreMysql8TestKey($probeKey, $snapshot);
+
+            expect($_ENV[$probeKey])->toBe('original-env-value');
+            expect($_SERVER[$probeKey])->toBe('original-server-value');
+            expect(getenv($probeKey))->toBe('original-process-value');
+        }
+    } finally {
+        unset($_ENV[$probeKey], $_SERVER[$probeKey]);
+        putenv($probeKey);
+    }
+});
+
+test('environment restoration correctly restores a key that was never set at all', function () {
+    $probeKey = 'MYSQL8_LOADER_ISOLATION_REGRESSION_PROBE';
+    unset($_ENV[$probeKey], $_SERVER[$probeKey]);
+    putenv($probeKey);
+
+    $snapshot = snapshotAndClearMysql8TestKey($probeKey);
+    restoreMysql8TestKey($probeKey, $snapshot);
+
+    expect($_ENV[$probeKey] ?? null)->toBeNull();
+    expect($_SERVER[$probeKey] ?? null)->toBeNull();
+    expect(getenv($probeKey))->toBeFalse();
 });
