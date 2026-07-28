@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Auth;
 
+use App\Domain\Wallet\Services\WalletAccountProvisioner;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\RegisterUserRequest;
 use App\Models\User;
@@ -18,6 +19,10 @@ use Inertia\Response;
 
 class RegisteredUserController extends Controller
 {
+    public function __construct(
+        private readonly WalletAccountProvisioner $walletAccountProvisioner,
+    ) {}
+
     /**
      * Display the registration page.
      */
@@ -29,11 +34,13 @@ class RegisteredUserController extends Controller
     /**
      * Handle an incoming registration request.
      *
-     * The user row and both required consent records are created inside
-     * one transaction: either all three exist or none of them do. The
-     * Registered event and login only happen after that transaction has
-     * actually committed, so a consent failure can never leave behind an
-     * unconsented, already-authenticated account.
+     * The user row, both required consent records, and the four
+     * user-scoped wallet accounts are created inside one transaction:
+     * either all six rows exist or none of them do. The Registered event
+     * and login only happen after that transaction has actually
+     * committed, so a consent or provisioning failure can never leave
+     * behind an unconsented, unprovisioned, already-authenticated
+     * account.
      */
     public function store(RegisterUserRequest $request): RedirectResponse
     {
@@ -46,6 +53,8 @@ class RegisteredUserController extends Controller
 
             UserConsent::recordAcceptance($user, 'terms', 'registration_checkbox');
             UserConsent::recordAcceptance($user, 'privacy', 'registration_checkbox');
+
+            $this->walletAccountProvisioner->provisionUserAccountsWithinTransaction($user);
 
             return $user;
         });

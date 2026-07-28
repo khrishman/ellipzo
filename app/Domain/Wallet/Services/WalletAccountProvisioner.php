@@ -49,19 +49,49 @@ final class WalletAccountProvisioner
 
     /**
      * Provision (or retrieve) the four accounts a user needs to
-     * participate in earning and advertising, atomically.
-     *
+     * participate in earning and advertising, atomically, in its own
+     * self-transacting call. The only entry point a caller without an
+     * already-open transaction should use.
+     */
+    public function provisionUserAccounts(User $user): UserWalletAccounts
+    {
+        return DB::transaction(function () use ($user): UserWalletAccounts {
+            return $this->provisionUserAccountsCore($user);
+        });
+    }
+
+    /**
+     * The transaction-aware counterpart to provisionUserAccounts(),
+     * reserved for callers that already own an ambient transaction (e.g.
+     * user registration, Google account completion) and must not open a
+     * second, independently-committing one nested inside it. Opens no
+     * transaction of its own - asserts one is already active and shares
+     * every other behavior and invariant with provisionUserAccounts()
+     * through the same core method below, so the two entry points cannot
+     * drift apart.
+     */
+    public function provisionUserAccountsWithinTransaction(User $user): UserWalletAccounts
+    {
+        if (DB::transactionLevel() < 1) {
+            throw new InvalidWalletAccountScopeException('provisionUserAccountsWithinTransaction requires an active database transaction.');
+        }
+
+        return $this->provisionUserAccountsCore($user);
+    }
+
+    /**
      * Before writing anything, every wallet account already tied to this
      * user - by user_id or by the canonical user scope/key, in either
      * direction of mismatch - is resolved and validated. A malformed
      * pre-existing row is reported via WalletAccountInvariantException
      * and nothing is created. Only genuinely missing accounts are then
-     * inserted, in a fixed deterministic order, inside one transaction:
-     * a failure partway through rolls back every row newly inserted by
-     * this call while leaving valid pre-existing rows - which were never
-     * part of this transaction's write-set - untouched.
+     * inserted, in a fixed deterministic order: a failure partway through
+     * rolls back every row newly inserted by this call (as part of
+     * whichever transaction the caller is running) while leaving valid
+     * pre-existing rows - which were never part of this call's
+     * write-set - untouched.
      */
-    public function provisionUserAccounts(User $user): UserWalletAccounts
+    private function provisionUserAccountsCore(User $user): UserWalletAccounts
     {
         if (! $user->exists || $user->getKey() === null) {
             throw new InvalidWalletAccountScopeException('Wallet accounts can only be provisioned for a persisted user.');
@@ -70,43 +100,41 @@ final class WalletAccountProvisioner
         $userId = $user->getKey();
         $scopeKey = (string) $userId;
 
-        return DB::transaction(function () use ($userId, $scopeKey): UserWalletAccounts {
-            $candidates = WalletAccount::query()
-                ->where('user_id', $userId)
-                ->orWhere(function ($query) use ($scopeKey): void {
-                    $query->where('scope_type', WalletAccountScopeType::User->value)
-                        ->where('scope_key', $scopeKey);
-                })
-                ->get();
+        $candidates = WalletAccount::query()
+            ->where('user_id', $userId)
+            ->orWhere(function ($query) use ($scopeKey): void {
+                $query->where('scope_type', WalletAccountScopeType::User->value)
+                    ->where('scope_key', $scopeKey);
+            })
+            ->get();
 
-            $existingByType = [];
+        $existingByType = [];
 
-            foreach ($candidates as $candidate) {
-                $this->assertUserScopedCandidate($candidate, $userId, $scopeKey);
+        foreach ($candidates as $candidate) {
+            $this->assertUserScopedCandidate($candidate, $userId, $scopeKey);
 
-                $typeValue = $candidate->account_type->value;
+            $typeValue = $candidate->account_type->value;
 
-                if (isset($existingByType[$typeValue])) {
-                    throw new WalletAccountInvariantException('A duplicate wallet account exists for this user and account type.');
-                }
-
-                $existingByType[$typeValue] = $candidate;
+            if (isset($existingByType[$typeValue])) {
+                throw new WalletAccountInvariantException('A duplicate wallet account exists for this user and account type.');
             }
 
-            $accounts = [];
-            foreach (self::USER_ACCOUNT_TYPES as $type) {
-                $accounts[$type->value] = $existingByType[$type->value]
-                    ?? $this->resolveAccount(WalletAccountScopeType::User, $scopeKey, $type, $userId);
-            }
+            $existingByType[$typeValue] = $candidate;
+        }
 
-            return new UserWalletAccounts(
-                earningAvailable: $accounts[WalletAccountType::EarningAvailable->value],
-                earningHeld: $accounts[WalletAccountType::EarningHeld->value],
-                advertisingAvailable: $accounts[WalletAccountType::AdvertisingAvailable->value],
-                advertisingReserved: $accounts[WalletAccountType::AdvertisingReserved->value],
-                userId: $userId,
-            );
-        });
+        $accounts = [];
+        foreach (self::USER_ACCOUNT_TYPES as $type) {
+            $accounts[$type->value] = $existingByType[$type->value]
+                ?? $this->resolveAccount(WalletAccountScopeType::User, $scopeKey, $type, $userId);
+        }
+
+        return new UserWalletAccounts(
+            earningAvailable: $accounts[WalletAccountType::EarningAvailable->value],
+            earningHeld: $accounts[WalletAccountType::EarningHeld->value],
+            advertisingAvailable: $accounts[WalletAccountType::AdvertisingAvailable->value],
+            advertisingReserved: $accounts[WalletAccountType::AdvertisingReserved->value],
+            userId: $userId,
+        );
     }
 
     public function platformFeeAccount(): WalletAccount

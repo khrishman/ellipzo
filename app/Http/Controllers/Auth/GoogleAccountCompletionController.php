@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Auth;
 
+use App\Domain\Wallet\Services\WalletAccountProvisioner;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\CompleteGoogleAccountRequest;
 use App\Models\User;
@@ -19,6 +20,10 @@ use Inertia\Response;
 
 class GoogleAccountCompletionController extends Controller
 {
+    public function __construct(
+        private readonly WalletAccountProvisioner $walletAccountProvisioner,
+    ) {}
+
     /**
      * Show the completion/consent screen for a pending Google identity.
      * There is nothing to show without a live, unexpired pending
@@ -40,12 +45,13 @@ class GoogleAccountCompletionController extends Controller
     }
 
     /**
-     * Create the account. The user row, the OAuth identity, and both
-     * required consent records are created inside one transaction -
-     * either all three exist or none of them do. The Registered event
-     * and login only happen after that transaction has actually
-     * committed, and the pending identity is forgotten immediately on
-     * success so it can never be completed a second time.
+     * Create the account. The user row, the OAuth identity, both required
+     * consent records, and the four user-scoped wallet accounts are
+     * created inside one transaction - either all seven rows exist or
+     * none of them do. The Registered event and login only happen after
+     * that transaction has actually committed, and the pending identity
+     * is forgotten immediately on success so it can never be completed a
+     * second time.
      */
     public function store(CompleteGoogleAccountRequest $request): RedirectResponse
     {
@@ -74,6 +80,8 @@ class GoogleAccountCompletionController extends Controller
 
             UserConsent::recordAcceptance($user, 'terms', 'google_oauth');
             UserConsent::recordAcceptance($user, 'privacy', 'google_oauth');
+
+            $this->walletAccountProvisioner->provisionUserAccountsWithinTransaction($user);
 
             return $user;
         });

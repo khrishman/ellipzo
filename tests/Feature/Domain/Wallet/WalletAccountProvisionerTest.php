@@ -316,6 +316,30 @@ test('a forced collision on the last of four accounts rolls back every newly-ins
     expect(WalletAccount::where('user_id', $user->id)->count())->toBe(0);
 });
 
+test('provisionUserAccountsWithinTransaction creates all four accounts when called inside an active transaction', function () {
+    $user = User::factory()->create();
+    $provisioner = new WalletAccountProvisioner;
+
+    $accounts = DB::transaction(fn () => $provisioner->provisionUserAccountsWithinTransaction($user));
+
+    expect($accounts)->toBeInstanceOf(UserWalletAccounts::class);
+    expect(WalletAccount::where('user_id', $user->id)->count())->toBe(4);
+});
+
+test('provisionUserAccountsWithinTransaction and provisionUserAccounts resolve the exact same rows for an already-provisioned user', function () {
+    $user = User::factory()->create();
+    $provisioner = new WalletAccountProvisioner;
+
+    $first = $provisioner->provisionUserAccounts($user);
+    $second = DB::transaction(fn () => $provisioner->provisionUserAccountsWithinTransaction($user));
+
+    expect($second->earningAvailable->id)->toBe($first->earningAvailable->id);
+    expect($second->earningHeld->id)->toBe($first->earningHeld->id);
+    expect($second->advertisingAvailable->id)->toBe($first->advertisingAvailable->id);
+    expect($second->advertisingReserved->id)->toBe($first->advertisingReserved->id);
+    expect(WalletAccount::where('user_id', $user->id)->count())->toBe(4);
+});
+
 test('WalletAccountProvisioner never uses create() or forceCreate() to construct a WalletAccount', function () {
     $source = file_get_contents(app_path('Domain/Wallet/Services/WalletAccountProvisioner.php'));
 
