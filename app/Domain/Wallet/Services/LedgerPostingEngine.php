@@ -10,12 +10,16 @@ use App\Domain\Wallet\Data\PostedLedgerTransaction;
 use App\Domain\Wallet\Data\PostLedgerEntryCommand;
 use App\Domain\Wallet\Data\PostLedgerTransactionCommand;
 use App\Domain\Wallet\Enums\LedgerEntryType;
+use App\Domain\Wallet\Enums\LedgerTransactionType;
+use App\Domain\Wallet\Enums\RelatedEntityType;
+use App\Domain\Wallet\Enums\ReversalRequestStatus;
 use App\Domain\Wallet\Exceptions\DuplicateFinancialEventException;
 use App\Domain\Wallet\Exceptions\InsufficientBalanceException;
 use App\Domain\Wallet\Exceptions\LedgerInvariantViolationException;
 use App\Domain\Wallet\Exceptions\UnknownWalletAccountException;
 use App\Domain\Wallet\Models\LedgerEntry;
 use App\Domain\Wallet\Models\LedgerTransaction;
+use App\Domain\Wallet\Models\ReversalRequest;
 use App\Domain\Wallet\Models\WalletAccount;
 use App\Models\User;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -102,7 +106,16 @@ final class LedgerPostingEngine
             throw $exception;
         }
 
-        if (! $this->matchesSemanticPayload($existing, $command)) {
+        if (! $this->matchesSemanticPayload(
+            $existing,
+            $command->type,
+            $command->description,
+            $command->actorId,
+            $command->relatedEntityType,
+            $command->relatedEntityId,
+            null,
+            $command->entries,
+        )) {
             throw new DuplicateFinancialEventException('A different ledger transaction already exists under this business reference.');
         }
 
@@ -110,39 +123,65 @@ final class LedgerPostingEngine
     }
 
     /**
+     * A single generalized comparison shared by post()'s own replay
+     * recovery and writeReversalEntriesWithinTransaction()'s reversal
+     * recovery - the expected shape is passed in explicitly rather than
+     * read from two different command types, so post()'s own call site
+     * (which always passes null for $expectedReversesTransactionId)
+     * reproduces its prior hardcoded behavior exactly.
+     *
      * Correlation ID is deliberately excluded: it identifies a request
      * attempt, not the financial event itself. An identical retry may
      * legitimately arrive with a fresh correlation ID and must still be
      * recognized as the same posting.
+     *
+     * @param  list<PostLedgerEntryCommand>  $expectedEntries
      */
-    private function matchesSemanticPayload(LedgerTransaction $existing, PostLedgerTransactionCommand $command): bool
-    {
-        if ($existing->type !== $command->type
+    private function matchesSemanticPayload(
+        LedgerTransaction $existing,
+        LedgerTransactionType $expectedType,
+        string $expectedDescription,
+        ?int $expectedActorId,
+        ?RelatedEntityType $expectedRelatedEntityType,
+        ?string $expectedRelatedEntityId,
+        ?string $expectedReversesTransactionId,
+        array $expectedEntries,
+    ): bool {
+        if ($existing->type !== $expectedType
             || $existing->currency_code !== Currency::USD
             || $existing->currency_scale !== Currency::USD->scale()
-            || $existing->description !== $command->description
-            || $existing->actor_id !== $command->actorId
-            || $existing->related_entity_type !== $command->relatedEntityType
-            || $existing->related_entity_id !== $command->relatedEntityId
-            || $existing->reverses_transaction_id !== null
+            || $existing->description !== $expectedDescription
+            || $existing->actor_id !== $expectedActorId
+            || $existing->related_entity_type !== $expectedRelatedEntityType
+            || $existing->related_entity_id !== $expectedRelatedEntityId
+            || $existing->reverses_transaction_id !== $expectedReversesTransactionId
         ) {
             return false;
         }
 
+        return $this->entriesMatch($existing->entries, $expectedEntries);
+    }
+
+    /**
+     * @param  iterable<LedgerEntry>  $existingEntries
+     * @param  list<PostLedgerEntryCommand>  $expectedEntries
+     */
+    private function entriesMatch(iterable $existingEntries, array $expectedEntries): bool
+    {
         $comparator = fn (array $a, array $b): int => ($a[0] <=> $b[0]) ?: (($a[1] <=> $b[1]) ?: ($a[2] <=> $b[2]));
 
-        $existingEntries = $existing->entries
+        $existing = collect($existingEntries)
             ->map(fn (LedgerEntry $e): array => [$e->wallet_account_id, $e->entry_type->value, $e->amount_atomic])
             ->all();
-        usort($existingEntries, $comparator);
+        usort($existing, $comparator);
 
-        $commandEntries = array_map(
+        $expected = array_map(
             fn (PostLedgerEntryCommand $e): array => [$e->walletAccountId, $e->entryType->value, $e->amount->atomic()],
-            $command->entries,
+            $expectedEntries,
         );
-        usort($commandEntries, $comparator);
+        usort($expected, $comparator);
 
-        return $existingEntries === $commandEntries;
+        return $existing === $expected;
     }
 
     /**
@@ -256,5 +295,211 @@ final class LedgerPostingEngine
         if (! $debitTotal->equals($creditTotal)) {
             throw new LedgerInvariantViolationException('The posted entries no longer balance.');
         }
+    }
+
+    /**
+     * The transaction-aware counterpart to post(), reserved for
+     * ReversalRequestService::execute(). Unlike post(), this method opens
+     * no transaction and no LedgerWriteContext/ReversalRequestWriteContext
+     * of its own - it assumes all three are already active and asserts
+     * every one of those preconditions before writing anything. This is
+     * what lets execute() catch InsufficientBalanceException narrowly and
+     * commit a durable review_required outcome instead of rolling back:
+     * the balance check below runs before any row is inserted, so an
+     * insufficient projected balance never leaves a partial write behind
+     * to roll back in the first place.
+     *
+     * post()'s own behavior is untouched: the two methods share only
+     * matchesSemanticPayload()/entriesMatch()/lockAccountsInOrder()/
+     * assertProjectedBalanceAllowed()/assertEntriesBalance(), each already
+     * parameterized or self-contained before this method existed.
+     */
+    public function writeReversalEntriesWithinTransaction(ReversalRequest $request, LedgerTransaction $original): LedgerTransaction
+    {
+        if (DB::transactionLevel() < 1) {
+            throw new LedgerInvariantViolationException('writeReversalEntriesWithinTransaction requires an active database transaction.');
+        }
+
+        if (! LedgerWriteContext::isActive()) {
+            throw new LedgerInvariantViolationException('writeReversalEntriesWithinTransaction requires an active LedgerWriteContext.');
+        }
+
+        if (! ReversalRequestWriteContext::isActive()) {
+            throw new LedgerInvariantViolationException('writeReversalEntriesWithinTransaction requires an active ReversalRequestWriteContext.');
+        }
+
+        if (! $request->exists) {
+            throw new LedgerInvariantViolationException('The reversal request must already be persisted.');
+        }
+
+        if (! in_array($request->status, [ReversalRequestStatus::Pending, ReversalRequestStatus::ReviewRequired], true)) {
+            throw new LedgerInvariantViolationException('The reversal request is not in an executable state.');
+        }
+
+        if (! $original->exists || $request->original_ledger_transaction_id !== $original->id) {
+            throw new LedgerInvariantViolationException('The supplied original transaction does not match the reversal request.');
+        }
+
+        $businessReference = self::reversalBusinessReference($original->id);
+        $inverseEntries = $this->deriveInverseEntries($original);
+
+        // Checked proactively, before any lock or balance derivation: a
+        // matching reversal may already exist from an earlier attempt
+        // whose own linkage never committed (a resumed execution, or a
+        // request replayed after a concurrent execution already applied
+        // it). Its entries are already reflected in the accounts' current
+        // balances, so deriving a projected balance for a second
+        // attempt to insert those same entries would double-count them
+        // and could reject as insufficient even though nothing new is
+        // about to be written. Checking here, before that derivation,
+        // avoids the false rejection entirely rather than working around
+        // it after the fact.
+        $existing = $this->findExistingReversal($businessReference, $original->id);
+
+        if ($existing !== null) {
+            return $this->reconcileExistingReversal($existing, $original, $request, $inverseEntries);
+        }
+
+        $accountsById = $this->lockAccountsInOrder($inverseEntries);
+
+        foreach ($inverseEntries as $entryCommand) {
+            $this->assertProjectedBalanceAllowed($accountsById[$entryCommand->walletAccountId], $entryCommand);
+        }
+
+        try {
+            $reversal = new LedgerTransaction;
+            $reversal->business_reference = $businessReference;
+            $reversal->type = LedgerTransactionType::Reversal;
+            $reversal->currency_code = Currency::USD;
+            $reversal->currency_scale = Currency::USD->scale();
+            $reversal->description = $request->reason;
+            $reversal->actor_id = $request->actor_id;
+            $reversal->related_entity_type = $original->related_entity_type;
+            $reversal->related_entity_id = $original->related_entity_id;
+            $reversal->correlation_id = $request->correlation_id;
+            $reversal->reverses_transaction_id = $original->id;
+            $reversal->save();
+        } catch (UniqueConstraintViolationException $exception) {
+            return $this->reconcileReversalReplay($original, $request, $inverseEntries, $businessReference, $exception);
+        }
+
+        $insertedEntries = [];
+        foreach ($inverseEntries as $entryCommand) {
+            $entry = new LedgerEntry;
+            $entry->ledger_transaction_id = $reversal->id;
+            $entry->wallet_account_id = $entryCommand->walletAccountId;
+            $entry->entry_type = $entryCommand->entryType;
+            $entry->amount_atomic = $entryCommand->amount->atomic();
+            $entry->save();
+            $insertedEntries[] = $entry;
+        }
+
+        $this->assertEntriesBalance($insertedEntries);
+
+        $reversal->setRelation('entries', collect($insertedEntries));
+
+        return $reversal;
+    }
+
+    private static function reversalBusinessReference(string $originalTransactionId): string
+    {
+        return 'reversal:'.$originalTransactionId;
+    }
+
+    /**
+     * Every original entry, inverted (debit<->credit) at the identical
+     * atomic amount. The original's own rows are the sole source of
+     * truth - never the request, never re-derived balances - so a
+     * reversal is always the exact mechanical opposite of what was
+     * actually posted.
+     *
+     * @return list<PostLedgerEntryCommand>
+     */
+    private function deriveInverseEntries(LedgerTransaction $original): array
+    {
+        if (! $original->relationLoaded('entries')) {
+            $original->load('entries');
+        }
+
+        return $original->entries
+            ->map(function (LedgerEntry $entry): PostLedgerEntryCommand {
+                $invertedType = $entry->entry_type === LedgerEntryType::Debit
+                    ? LedgerEntryType::Credit
+                    : LedgerEntryType::Debit;
+
+                $amount = Money::fromAtomic($entry->amount_atomic, Currency::USD)->ensurePositive();
+
+                return new PostLedgerEntryCommand($entry->wallet_account_id, $invertedType, $amount);
+            })
+            ->all();
+    }
+
+    private function findExistingReversal(string $businessReference, string $originalId): ?LedgerTransaction
+    {
+        $existing = LedgerTransaction::query()
+            ->where('business_reference', $businessReference)
+            ->with('entries')
+            ->lockForUpdate()
+            ->first();
+
+        return $existing ?? LedgerTransaction::query()
+            ->where('reverses_transaction_id', $originalId)
+            ->with('entries')
+            ->lockForUpdate()
+            ->first();
+    }
+
+    /**
+     * @param  list<PostLedgerEntryCommand>  $inverseEntries
+     */
+    private function reconcileExistingReversal(
+        LedgerTransaction $existing,
+        LedgerTransaction $original,
+        ReversalRequest $request,
+        array $inverseEntries,
+    ): LedgerTransaction {
+        if (! $this->matchesSemanticPayload(
+            $existing,
+            LedgerTransactionType::Reversal,
+            $request->reason,
+            $request->actor_id,
+            $original->related_entity_type,
+            $original->related_entity_id,
+            $original->id,
+            $inverseEntries,
+        )) {
+            throw new DuplicateFinancialEventException('A different reversal transaction already exists for this original transaction.');
+        }
+
+        return $existing;
+    }
+
+    /**
+     * The reactive fallback for the rare window between this method's own
+     * proactive findExistingReversal() call and its insert attempt below:
+     * a genuinely concurrent writer that inserted the matching reversal in
+     * between. Not the primary recovery mechanism - that is the proactive
+     * check above, specifically so a resumed/replayed execution never
+     * reaches the balance check at all.
+     *
+     * @param  list<PostLedgerEntryCommand>  $inverseEntries
+     */
+    private function reconcileReversalReplay(
+        LedgerTransaction $original,
+        ReversalRequest $request,
+        array $inverseEntries,
+        string $businessReference,
+        UniqueConstraintViolationException $exception,
+    ): LedgerTransaction {
+        $existing = $this->findExistingReversal($businessReference, $original->id);
+
+        if ($existing === null) {
+            // Neither identity that could explain a unique-constraint
+            // conflict on this insert was found - an unexplained anomaly,
+            // never reinterpreted as a known duplicate-event conflict.
+            throw $exception;
+        }
+
+        return $this->reconcileExistingReversal($existing, $original, $request, $inverseEntries);
     }
 }

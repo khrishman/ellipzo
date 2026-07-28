@@ -21,7 +21,7 @@ trait InsertsRawLedgerRowsForTesting
      */
     protected function insertRawWalletAccount(array $overrides = []): string
     {
-        $id = $overrides['id'] ?? (string) Str::ulid();
+        $id = $overrides['id'] ?? strtolower((string) Str::ulid());
 
         DB::table('wallet_accounts')->insert(array_merge([
             'id' => $id,
@@ -42,7 +42,7 @@ trait InsertsRawLedgerRowsForTesting
      */
     protected function insertRawLedgerTransaction(array $overrides = []): string
     {
-        $id = $overrides['id'] ?? (string) Str::ulid();
+        $id = $overrides['id'] ?? strtolower((string) Str::ulid());
 
         DB::table('ledger_transactions')->insert(array_merge([
             'id' => $id,
@@ -67,7 +67,7 @@ trait InsertsRawLedgerRowsForTesting
      */
     protected function insertRawLedgerEntry(array $overrides = []): string
     {
-        $id = $overrides['id'] ?? (string) Str::ulid();
+        $id = $overrides['id'] ?? strtolower((string) Str::ulid());
         $ledgerTransactionId = $overrides['ledger_transaction_id'] ?? $this->insertRawLedgerTransaction();
         $walletAccountId = $overrides['wallet_account_id'] ?? $this->insertRawWalletAccount();
 
@@ -78,6 +78,33 @@ trait InsertsRawLedgerRowsForTesting
             'entry_type' => 'credit',
             'amount_atomic' => 1000,
             'created_at' => now(),
+        ], $overrides));
+
+        return $id;
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     */
+    protected function insertRawReversalRequest(array $overrides = []): string
+    {
+        $id = $overrides['id'] ?? strtolower((string) Str::ulid());
+
+        DB::table('reversal_requests')->insert(array_merge([
+            'id' => $id,
+            'original_ledger_transaction_id' => $overrides['original_ledger_transaction_id'] ?? $this->insertRawLedgerTransaction(),
+            'reversal_transaction_id' => null,
+            'idempotency_key' => 'test-idempotency-'.Str::random(16),
+            'fingerprint' => str_repeat('a', 64),
+            'status' => 'pending',
+            'actor_id' => null,
+            'reason' => 'Raw test reversal request',
+            'correlation_id' => (string) Str::uuid(),
+            'failure_code' => null,
+            'applied_at' => null,
+            'review_required_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
         ], $overrides));
 
         return $id;

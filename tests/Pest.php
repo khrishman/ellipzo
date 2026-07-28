@@ -2,6 +2,7 @@
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Feature\Domain\Wallet\Concerns\BuildsLedgerPostingFixtures;
+use Tests\Feature\Domain\Wallet\Concerns\BuildsReversalRequestFixtures;
 use Tests\Feature\Domain\Wallet\Concerns\InsertsRawLedgerRowsForTesting;
 use Tests\Feature\Domain\Wallet\Concerns\IsolatesModelEventListenersForTesting;
 use Tests\TestCase;
@@ -10,5 +11,6 @@ uses(TestCase::class, RefreshDatabase::class)->in('Feature');
 uses(
     InsertsRawLedgerRowsForTesting::class,
     BuildsLedgerPostingFixtures::class,
+    BuildsReversalRequestFixtures::class,
     IsolatesModelEventListenersForTesting::class,
 )->in('Feature/Domain/Wallet');
