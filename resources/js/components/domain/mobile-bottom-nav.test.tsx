@@ -25,7 +25,7 @@ describe('MobileBottomNav', () => {
         expect(screen.getByRole('link', { name: /home/i })).toHaveAttribute('href', '/dashboard');
         expect(screen.getByRole('link', { name: /earn/i })).toHaveAttribute('href', '/tasks');
         expect(screen.getByRole('link', { name: /advertise/i })).toHaveAttribute('href', '/advertise');
-        expect(screen.getByRole('link', { name: /activity/i })).toHaveAttribute('href', '/wallet/transactions');
+        expect(screen.getByRole('link', { name: /activity/i })).toHaveAttribute('href', '/transactions');
         expect(screen.getByRole('link', { name: /menu/i })).toHaveAttribute('href', '/settings/profile');
     });
 
@@ -38,7 +38,7 @@ describe('MobileBottomNav', () => {
     });
 
     it('matches sub-paths of a nav item as active, not just the exact path', () => {
-        mockUrl.mockReturnValueOnce('/wallet/transactions/123');
+        mockUrl.mockReturnValueOnce('/transactions/123');
         render(<MobileBottomNav />);
 
         expect(screen.getByRole('link', { name: /activity/i })).toHaveAttribute('aria-current', 'page');

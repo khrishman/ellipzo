@@ -8,7 +8,7 @@ const bottomNavItems: NavItem[] = [
     { label: 'Home', href: '/dashboard', icon: Home },
     { label: 'Earn', href: '/tasks', icon: Wallet },
     { label: 'Advertise', href: '/advertise', icon: Megaphone },
-    { label: 'Activity', href: '/wallet/transactions', icon: Activity },
+    { label: 'Activity', href: '/transactions', icon: Activity },
     { label: 'Menu', href: '/settings/profile', icon: Menu },
 ];
 

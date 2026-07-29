@@ -22,3 +22,9 @@ uses(
     BuildsReversalRequestFixtures::class,
     BuildsAdministrativeAdjustmentFixtures::class,
 )->in('Feature/Console');
+uses(
+    InsertsRawLedgerRowsForTesting::class,
+    BuildsLedgerPostingFixtures::class,
+    BuildsReversalRequestFixtures::class,
+    BuildsAdministrativeAdjustmentFixtures::class,
+)->in('Feature/Wallet');

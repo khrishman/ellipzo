@@ -4,6 +4,7 @@ use App\Http\Controllers\AccountRestrictedController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\LegalController;
 use App\Http\Controllers\Settings\ProfileController;
+use App\Http\Controllers\Wallet\TransactionHistoryController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -39,6 +40,8 @@ Route::get('/legal/{document}', [LegalController::class, 'show'])->name('legal.s
 // order alone.
 Route::middleware(['auth', 'account.protected', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'show'])->name('dashboard');
+
+    Route::get('/transactions', [TransactionHistoryController::class, 'show'])->name('transactions.index');
 
     Route::get('/settings/profile', [ProfileController::class, 'edit'])->name('settings.profile.edit');
     Route::patch('/settings/profile', [ProfileController::class, 'update'])->name('settings.profile.update');

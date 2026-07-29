@@ -55,7 +55,7 @@ const sidebarGroups: NavGroup[] = [
     },
     {
         items: [
-            { label: 'Transactions', href: '/wallet/transactions', icon: Receipt },
+            { label: 'Transactions', href: '/transactions', icon: Receipt },
             { label: 'Referrals', href: '/referrals', icon: Users },
             { label: 'Support', href: '/support', icon: LifeBuoy },
         ],
