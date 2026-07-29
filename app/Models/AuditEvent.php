@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Exceptions\InvalidAuditEventIdentifierException;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -37,6 +38,15 @@ class AuditEvent extends Model
     }
 
     /**
+     * $entityKey is a generic string identifier (ULID, UUID, or another
+     * future scheme) for an entity whose primary key is not a PHP int -
+     * an additive, backward-compatible alternative to $entityId, added
+     * last in the parameter list (after the existing optional
+     * $correlationId) specifically so no required parameter follows an
+     * optional one in the declaration - both existing call sites
+     * (AccountStatusTransitioner, StaffAccessController) use exclusively
+     * named arguments and are unaffected by its position either way.
+     *
      * @param  array<string, mixed>  $before  Allowlisted safe fields only.
      * @param  array<string, mixed>  $after  Allowlisted safe fields only.
      */
@@ -49,18 +59,52 @@ class AuditEvent extends Model
         array $after,
         string $reason,
         ?string $correlationId = null,
+        ?string $entityKey = null,
     ): self {
+        $normalizedEntityKey = self::normalizeEntityKey($entityKey);
+
+        if ($entityId !== null && $normalizedEntityKey !== null) {
+            throw new InvalidAuditEventIdentifierException('At most one of entityId and entityKey may be supplied.');
+        }
+
         return static::forceCreate([
             'actor_id' => $actor->id,
             'action' => $action,
             'entity_type' => $entityType,
             'entity_id' => $entityId,
+            'entity_key' => $normalizedEntityKey,
             'before_state' => $before,
             'after_state' => $after,
             'reason' => $reason,
             'correlation_id' => $correlationId ?? (string) Str::uuid(),
             'created_at' => Carbon::now('UTC'),
         ]);
+    }
+
+    /**
+     * Null (supplying neither identifier remains allowed, for backward
+     * compatibility with entity-less audit events) passes through
+     * unchanged; a non-null value is trimmed, rejected if empty or over
+     * the entity_key column width (191), and rejected if it contains any
+     * control character.
+     */
+    private static function normalizeEntityKey(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $trimmed = trim($value);
+
+        if ($trimmed === '' || strlen($trimmed) > 191) {
+            throw new InvalidAuditEventIdentifierException('Entity key length is out of bounds.');
+        }
+
+        if (preg_match('/[\x00-\x1F\x7F]/', $trimmed) === 1) {
+            throw new InvalidAuditEventIdentifierException('Entity key contains invalid characters.');
+        }
+
+        return $trimmed;
     }
 
     /**

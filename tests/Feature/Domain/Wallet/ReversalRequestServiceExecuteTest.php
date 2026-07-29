@@ -77,7 +77,7 @@ test('an insufficient-balance execution creates no ledger transaction or entries
     $clearing = (new WalletAccountProvisioner)->providerClearingAccount('provider-execute-insufficient');
 
     $original = $this->makeReversibleOriginal($engine, $accounts, $clearing, 'deposit_credit:execute-insufficient-fund', amount: 1000);
-    $engine->post($this->postingCommand(type: LedgerTransactionType::AdministrativeAdjustment, businessReference: 'administrative_adjustment:execute-insufficient-spend', entries: [
+    $engine->post($this->postingCommand(type: LedgerTransactionType::FundReservation, businessReference: 'fund_reservation:execute-insufficient-spend', entries: [
         $this->creditEntry($clearing->id, 700),
         $this->debitEntry($accounts->earningAvailable->id, 700),
     ]));
@@ -101,7 +101,7 @@ test('a repeated insufficient-balance execution preserves the first review-requi
     $clearing = (new WalletAccountProvisioner)->providerClearingAccount('provider-execute-repeated-insufficient');
 
     $original = $this->makeReversibleOriginal($engine, $accounts, $clearing, 'deposit_credit:execute-repeated-insufficient-fund', amount: 1000);
-    $engine->post($this->postingCommand(type: LedgerTransactionType::AdministrativeAdjustment, businessReference: 'administrative_adjustment:execute-repeated-insufficient-spend', entries: [
+    $engine->post($this->postingCommand(type: LedgerTransactionType::FundReservation, businessReference: 'fund_reservation:execute-repeated-insufficient-spend', entries: [
         $this->creditEntry($clearing->id, 700),
         $this->debitEntry($accounts->earningAvailable->id, 700),
     ]));
@@ -152,7 +152,7 @@ test('a later successful execution after review-required clears the failure code
     $clearing = (new WalletAccountProvisioner)->providerClearingAccount('provider-execute-later-success');
 
     $original = $this->makeReversibleOriginal($engine, $accounts, $clearing, 'deposit_credit:execute-later-success-fund', amount: 1000);
-    $engine->post($this->postingCommand(type: LedgerTransactionType::AdministrativeAdjustment, businessReference: 'administrative_adjustment:execute-later-success-spend', entries: [
+    $engine->post($this->postingCommand(type: LedgerTransactionType::FundReservation, businessReference: 'fund_reservation:execute-later-success-spend', entries: [
         $this->creditEntry($clearing->id, 700),
         $this->debitEntry($accounts->earningAvailable->id, 700),
     ]));

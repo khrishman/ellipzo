@@ -80,6 +80,11 @@ test('reversal transactions are rejected outright', function () {
         ->toThrow(LedgerInvariantViolationException::class);
 });
 
+test('administrative adjustment transactions are rejected outright', function () {
+    expect(fn () => makeCommand(['type' => LedgerTransactionType::AdministrativeAdjustment, 'businessReference' => 'administrative_adjustment:x']))
+        ->toThrow(LedgerInvariantViolationException::class);
+});
+
 test('an unbalanced command is rejected', function () {
     expect(fn () => makeCommand(['entries' => [makeDebitEntry(amount: 100), makeCreditEntry(amount: 200)]]))
         ->toThrow(LedgerInvariantViolationException::class);

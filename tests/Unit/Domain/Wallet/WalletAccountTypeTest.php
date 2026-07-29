@@ -20,4 +20,5 @@ test('each wallet account type has its approved normal entry side, negative-bala
     'advertising_reserved' => [WalletAccountType::AdvertisingReserved, LedgerEntryType::Credit, false, WalletAccountScopeType::User],
     'platform_fee' => [WalletAccountType::PlatformFee, LedgerEntryType::Credit, false, WalletAccountScopeType::Platform],
     'provider_settlement_clearing' => [WalletAccountType::ProviderSettlementClearing, LedgerEntryType::Debit, true, WalletAccountScopeType::Provider],
+    'platform_suspense' => [WalletAccountType::PlatformSuspense, LedgerEntryType::Debit, true, WalletAccountScopeType::Platform],
 ]);

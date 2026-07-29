@@ -18,8 +18,15 @@ use Illuminate\Support\Str;
  * transaction. Immutable after construction - every invariant this class
  * can prove without touching the database (list shape, positivity,
  * balancing, metadata format) is proven here, before LedgerPostingEngine
- * ever opens a transaction. Reversal transactions are rejected outright:
- * Task 2.5 owns reverses_transaction_id and reversal semantics.
+ * ever opens a transaction. Reversal and administrative-adjustment
+ * transactions are both rejected outright: Task 2.5 owns
+ * reverses_transaction_id/reversal semantics via
+ * LedgerPostingEngine::writeReversalEntriesWithinTransaction(), and Task
+ * 2.5.1 owns administrative-adjustment semantics via
+ * LedgerPostingEngine::writeAdministrativeAdjustmentWithinTransaction() -
+ * neither type has a generic path, so permission, self-adjustment,
+ * target-account, and audit enforcement can never be bypassed by
+ * constructing a generically-typed command instead.
  */
 final readonly class PostLedgerTransactionCommand
 {
@@ -52,6 +59,10 @@ final readonly class PostLedgerTransactionCommand
     ) {
         if ($type === LedgerTransactionType::Reversal) {
             throw new LedgerInvariantViolationException('Reversal transactions cannot be posted through the generic posting engine.');
+        }
+
+        if ($type === LedgerTransactionType::AdministrativeAdjustment) {
+            throw new LedgerInvariantViolationException('Administrative adjustment transactions cannot be posted through the generic posting engine.');
         }
 
         if (! is_string($businessReference)) {

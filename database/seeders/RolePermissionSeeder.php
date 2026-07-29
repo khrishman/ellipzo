@@ -28,13 +28,14 @@ class RolePermissionSeeder extends Seeder
 {
     private const GUARD = 'web';
 
-    /** Permissions Task 9/10 actually enforce. */
+    /** Permissions Task 9/10/2.5.1 actually enforce. */
     private const ACTIVE_PERMISSIONS = [
         'admin.overview.view',
         'staff.view',
         'staff.manage',
         'audit.view',
         'users.status.manage',
+        'ledger.adjust',
     ];
 
     /** Referenced by prd.md/Architecture.md/admin-nav.tsx; not yet enforced anywhere. */
@@ -47,7 +48,6 @@ class RolePermissionSeeder extends Seeder
         'deposits.review',
         'withdrawals.review',
         'withdrawals.approve',
-        'ledger.adjust',
         'settings.manage',
         'support.view',
     ];

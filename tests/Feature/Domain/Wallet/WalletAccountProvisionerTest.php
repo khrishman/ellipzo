@@ -64,6 +64,29 @@ test('platformFeeAccount is a genuine singleton across repeated calls', function
     expect(WalletAccount::where('scope_type', WalletAccountScopeType::Platform->value)->count())->toBe(1);
 });
 
+test('platformSuspenseAccount is a genuine singleton across repeated calls', function () {
+    $provisioner = new WalletAccountProvisioner;
+
+    $first = $provisioner->platformSuspenseAccount();
+    $second = $provisioner->platformSuspenseAccount();
+
+    expect($second->id)->toBe($first->id);
+    expect($first->account_type)->toBe(WalletAccountType::PlatformSuspense);
+    expect($first->scope_type)->toBe(WalletAccountScopeType::Platform);
+    expect(WalletAccount::where('account_type', WalletAccountType::PlatformSuspense->value)->count())->toBe(1);
+});
+
+test('platformFeeAccount and platformSuspenseAccount share the same platform scope key but remain distinct rows', function () {
+    $provisioner = new WalletAccountProvisioner;
+
+    $fee = $provisioner->platformFeeAccount();
+    $suspense = $provisioner->platformSuspenseAccount();
+
+    expect($fee->id)->not->toBe($suspense->id);
+    expect($fee->scope_key)->toBe($suspense->scope_key);
+    expect(WalletAccount::where('scope_type', WalletAccountScopeType::Platform->value)->count())->toBe(2);
+});
+
 test('providerClearingAccount normalizes case and whitespace to the same account', function () {
     $provisioner = new WalletAccountProvisioner;
 

@@ -28,11 +28,18 @@ use Illuminate\Support\Facades\DB;
 /**
  * The only path by which a LedgerTransaction/LedgerEntry row is ever
  * created - enforced by LedgerWriteContext, which this class is the sole
- * intended caller of. Builds no domain-specific caller for any
- * LedgerTransactionType; a future action (reservation, settlement,
- * deposit, withdrawal, adjustment) supplies an already-validated
- * PostLedgerTransactionCommand and calls post() - none of those actions
- * exist yet.
+ * intended caller of. Builds no domain-specific caller for most
+ * LedgerTransactionType values; a future action (reservation, settlement,
+ * deposit, withdrawal) supplies an already-validated
+ * PostLedgerTransactionCommand and calls post(). Two types are the
+ * deliberate exception: LedgerTransactionType::Reversal and
+ * ::AdministrativeAdjustment both have their own narrowly named,
+ * precondition-gated write path
+ * (writeReversalEntriesWithinTransaction()/
+ * writeAdministrativeAdjustmentWithinTransaction()) and can never be
+ * constructed as a generic PostLedgerTransactionCommand at all - so
+ * neither type has a path that bypasses its owning service's own
+ * authorization/audit logic.
  */
 final class LedgerPostingEngine
 {
@@ -40,61 +47,197 @@ final class LedgerPostingEngine
     {
         return DB::transaction(function () use ($command): PostedLedgerTransaction {
             return LedgerWriteContext::run(function () use ($command): PostedLedgerTransaction {
-                if ($command->actorId !== null && ! User::query()->whereKey($command->actorId)->exists()) {
-                    // The restrictive FK on ledger_transactions.actor_id would
-                    // also reject this at insert time - this check exists to
-                    // fail with a clear, typed exception rather than relying
-                    // solely on a raw FK-violation QueryException.
-                    throw new LedgerInvariantViolationException('The actor no longer exists.');
-                }
-
-                try {
-                    $transaction = new LedgerTransaction;
-                    $transaction->business_reference = $command->businessReference;
-                    $transaction->type = $command->type;
-                    $transaction->currency_code = Currency::USD;
-                    $transaction->currency_scale = Currency::USD->scale();
-                    $transaction->description = $command->description;
-                    $transaction->actor_id = $command->actorId;
-                    $transaction->related_entity_type = $command->relatedEntityType;
-                    $transaction->related_entity_id = $command->relatedEntityId;
-                    $transaction->correlation_id = $command->correlationId;
-                    $transaction->reverses_transaction_id = null;
-                    $transaction->save();
-                } catch (UniqueConstraintViolationException $exception) {
-                    return $this->reconcileReplay($command, $exception);
-                }
-
-                $accountsById = $this->lockAccountsInOrder($command->entries);
-
-                foreach ($command->entries as $entryCommand) {
-                    $this->assertProjectedBalanceAllowed($accountsById[$entryCommand->walletAccountId], $entryCommand);
-                }
-
-                $insertedEntries = [];
-                foreach ($command->entries as $entryCommand) {
-                    $entry = new LedgerEntry;
-                    $entry->ledger_transaction_id = $transaction->id;
-                    $entry->wallet_account_id = $entryCommand->walletAccountId;
-                    $entry->entry_type = $entryCommand->entryType;
-                    $entry->amount_atomic = $entryCommand->amount->atomic();
-                    $entry->save();
-                    $insertedEntries[] = $entry;
-                }
-
-                $this->assertEntriesBalance($insertedEntries);
-
-                $transaction->setRelation('entries', collect($insertedEntries));
-
-                return new PostedLedgerTransaction($transaction, wasReplay: false);
+                return $this->postCore($command);
             });
         });
     }
 
-    private function reconcileReplay(PostLedgerTransactionCommand $command, UniqueConstraintViolationException $exception): PostedLedgerTransaction
+    /**
+     * post()'s only caller-facing entry point besides post() itself.
+     * PostLedgerTransactionCommand's own constructor rejects both
+     * LedgerTransactionType::Reversal and ::AdministrativeAdjustment
+     * outright, so this can never receive either special type - there is
+     * no generic path capable of constructing one, matching
+     * writeReversalEntriesWithinTransaction()'s own established
+     * precedent exactly.
+     */
+    private function postCore(PostLedgerTransactionCommand $command): PostedLedgerTransaction
     {
+        return $this->insertTransactionAndEntries(
+            $command->type,
+            $command->businessReference,
+            $command->description,
+            $command->actorId,
+            $command->relatedEntityType,
+            $command->relatedEntityId,
+            $command->correlationId,
+            $command->entries,
+        );
+    }
+
+    /**
+     * The only path by which an administrative-adjustment
+     * LedgerTransaction/LedgerEntry pair is ever created - reserved
+     * exclusively for AdministrativeAdjustmentService (Task 2.5.1),
+     * mirroring writeReversalEntriesWithinTransaction()'s own narrowly
+     * named, narrowly scoped shape. post()/postCore() cannot be used for
+     * this: PostLedgerTransactionCommand's own constructor rejects
+     * LedgerTransactionType::AdministrativeAdjustment outright, exactly
+     * as it already does for Reversal.
+     *
+     * Opens no transaction of its own - asserts an active database
+     * transaction, an active LedgerWriteContext, an active
+     * AdministrativeAdjustmentWriteContext, and that $type is exactly
+     * LedgerTransactionType::AdministrativeAdjustment are all true before
+     * writing anything. That last check is defense-in-depth, not merely
+     * decorative: it is the same "verify, don't just assume" discipline
+     * applied everywhere else in this class (e.g. the actor-existence
+     * recheck alongside the FK) - a caller cannot silently repurpose this
+     * method for a different transaction type even if every other
+     * precondition happens to be satisfied. The caller supplies the
+     * already-resolved entries (exactly two: the target account and
+     * platform_suspense, in whichever debit/credit arrangement its
+     * direction requires) - this method never decides which accounts or
+     * amounts are involved, only that every precondition holds before
+     * delegating to the same shared core post() itself uses.
+     *
+     * @param  list<PostLedgerEntryCommand>  $entries
+     */
+    public function writeAdministrativeAdjustmentWithinTransaction(
+        LedgerTransactionType $type,
+        string $businessReference,
+        string $description,
+        User $actor,
+        string $correlationId,
+        array $entries,
+    ): PostedLedgerTransaction {
+        if (DB::transactionLevel() < 1) {
+            throw new LedgerInvariantViolationException('writeAdministrativeAdjustmentWithinTransaction requires an active database transaction.');
+        }
+
+        if (! LedgerWriteContext::isActive()) {
+            throw new LedgerInvariantViolationException('writeAdministrativeAdjustmentWithinTransaction requires an active LedgerWriteContext.');
+        }
+
+        if (! AdministrativeAdjustmentWriteContext::isActive()) {
+            throw new LedgerInvariantViolationException('writeAdministrativeAdjustmentWithinTransaction requires an active AdministrativeAdjustmentWriteContext.');
+        }
+
+        if ($type !== LedgerTransactionType::AdministrativeAdjustment) {
+            throw new LedgerInvariantViolationException('writeAdministrativeAdjustmentWithinTransaction only accepts LedgerTransactionType::AdministrativeAdjustment.');
+        }
+
+        if (! $actor->exists || $actor->getKey() === null) {
+            throw new LedgerInvariantViolationException('The actor must be a persisted user.');
+        }
+
+        return $this->insertTransactionAndEntries(
+            LedgerTransactionType::AdministrativeAdjustment,
+            $businessReference,
+            $description,
+            $actor->getKey(),
+            null,
+            null,
+            $correlationId,
+            $entries,
+        );
+    }
+
+    /**
+     * The single shared write core behind both postCore() and
+     * writeAdministrativeAdjustmentWithinTransaction() - insert-first,
+     * catch-conflict, lock-in-order, balance-check, insert-entries,
+     * assert-balanced. Private: every caller of this class must go
+     * through one of the two type-specific, precondition-asserting public
+     * methods above (or writeReversalEntriesWithinTransaction() for
+     * reversals, which never calls this at all - reversal's own entries
+     * are always a mechanical inversion of an existing transaction, never
+     * built the same way).
+     *
+     * @param  list<PostLedgerEntryCommand>  $entries
+     */
+    private function insertTransactionAndEntries(
+        LedgerTransactionType $type,
+        string $businessReference,
+        string $description,
+        ?int $actorId,
+        ?RelatedEntityType $relatedEntityType,
+        ?string $relatedEntityId,
+        string $correlationId,
+        array $entries,
+    ): PostedLedgerTransaction {
+        if ($actorId !== null && ! User::query()->whereKey($actorId)->exists()) {
+            // The restrictive FK on ledger_transactions.actor_id would
+            // also reject this at insert time - this check exists to
+            // fail with a clear, typed exception rather than relying
+            // solely on a raw FK-violation QueryException.
+            throw new LedgerInvariantViolationException('The actor no longer exists.');
+        }
+
+        try {
+            $transaction = new LedgerTransaction;
+            $transaction->business_reference = $businessReference;
+            $transaction->type = $type;
+            $transaction->currency_code = Currency::USD;
+            $transaction->currency_scale = Currency::USD->scale();
+            $transaction->description = $description;
+            $transaction->actor_id = $actorId;
+            $transaction->related_entity_type = $relatedEntityType;
+            $transaction->related_entity_id = $relatedEntityId;
+            $transaction->correlation_id = $correlationId;
+            $transaction->reverses_transaction_id = null;
+            $transaction->save();
+        } catch (UniqueConstraintViolationException $exception) {
+            return $this->reconcileGenericReplay($type, $businessReference, $description, $actorId, $relatedEntityType, $relatedEntityId, $entries, $exception);
+        }
+
+        $accountsById = $this->lockAccountsInOrder($entries);
+
+        foreach ($entries as $entryCommand) {
+            $this->assertProjectedBalanceAllowed($accountsById[$entryCommand->walletAccountId], $entryCommand);
+        }
+
+        $insertedEntries = [];
+        foreach ($entries as $entryCommand) {
+            $entry = new LedgerEntry;
+            $entry->ledger_transaction_id = $transaction->id;
+            $entry->wallet_account_id = $entryCommand->walletAccountId;
+            $entry->entry_type = $entryCommand->entryType;
+            $entry->amount_atomic = $entryCommand->amount->atomic();
+            $entry->save();
+            $insertedEntries[] = $entry;
+        }
+
+        $this->assertEntriesBalance($insertedEntries);
+
+        $transaction->setRelation('entries', collect($insertedEntries));
+
+        return new PostedLedgerTransaction($transaction, wasReplay: false);
+    }
+
+    /**
+     * The reactive replay-recovery path shared by postCore() and
+     * writeAdministrativeAdjustmentWithinTransaction() (both insert-first,
+     * catch-conflict). Generalized so post()'s own prior hardcoded
+     * behavior (type/description/actor/related-entity taken from a
+     * PostLedgerTransactionCommand) is reproduced exactly when called
+     * from postCore(), while the adjustment path supplies the same shape
+     * from its own raw parameters instead.
+     *
+     * @param  list<PostLedgerEntryCommand>  $expectedEntries
+     */
+    private function reconcileGenericReplay(
+        LedgerTransactionType $expectedType,
+        string $businessReference,
+        string $expectedDescription,
+        ?int $expectedActorId,
+        ?RelatedEntityType $expectedRelatedEntityType,
+        ?string $expectedRelatedEntityId,
+        array $expectedEntries,
+        UniqueConstraintViolationException $exception,
+    ): PostedLedgerTransaction {
         $existing = LedgerTransaction::query()
-            ->where('business_reference', $command->businessReference)
+            ->where('business_reference', $businessReference)
             ->with('entries')
             ->lockForUpdate()
             ->first();
@@ -108,13 +251,13 @@ final class LedgerPostingEngine
 
         if (! $this->matchesSemanticPayload(
             $existing,
-            $command->type,
-            $command->description,
-            $command->actorId,
-            $command->relatedEntityType,
-            $command->relatedEntityId,
+            $expectedType,
+            $expectedDescription,
+            $expectedActorId,
+            $expectedRelatedEntityType,
+            $expectedRelatedEntityId,
             null,
-            $command->entries,
+            $expectedEntries,
         )) {
             throw new DuplicateFinancialEventException('A different ledger transaction already exists under this business reference.');
         }

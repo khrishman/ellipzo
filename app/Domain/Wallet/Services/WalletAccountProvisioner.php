@@ -148,6 +148,22 @@ final class WalletAccountProvisioner
     }
 
     /**
+     * The internal balancing account for administrative corrections
+     * (Task 2.5.1) - never provider funds, fee revenue, or a real external
+     * asset. Lazily provisioned on first use, exactly like
+     * platformFeeAccount() - no eager seeding, no migration, no backfill.
+     */
+    public function platformSuspenseAccount(): WalletAccount
+    {
+        return $this->resolveAccount(
+            WalletAccountScopeType::Platform,
+            self::PLATFORM_SCOPE_KEY,
+            WalletAccountType::PlatformSuspense,
+            null,
+        );
+    }
+
+    /**
      * @param  mixed  $providerIdentifier  Accepted as mixed, not string, so
      *                                     a non-strict caller can never have an int/float/bool silently
      *                                     coerced into a string before is_string() runs.

@@ -202,7 +202,7 @@ test('a different transaction type with the same business reference conflicts', 
     ));
 
     expect(fn () => $engine->post($this->postingCommand(
-        type: LedgerTransactionType::AdministrativeAdjustment,
+        type: LedgerTransactionType::FundReservation,
         businessReference: 'deposit_credit:conflict-type',
         entries: [
             $this->debitEntry($clearing->id, 100),
@@ -232,10 +232,10 @@ test('a failed posting attempt does not poison its business reference for a corr
     $accounts = $this->provisionTestAccounts();
     $clearing = (new WalletAccountProvisioner)->providerClearingAccount('provider-not-poisoned');
     $engine = new LedgerPostingEngine;
-    $reference = 'administrative_adjustment:not-poisoned';
+    $reference = 'fund_reservation:not-poisoned';
 
     // This attempt fails (insufficient balance) and must roll back entirely.
-    expect(fn () => $engine->post($this->postingCommand(type: LedgerTransactionType::AdministrativeAdjustment, businessReference: $reference, entries: [
+    expect(fn () => $engine->post($this->postingCommand(type: LedgerTransactionType::FundReservation, businessReference: $reference, entries: [
         $this->debitEntry($accounts->earningAvailable->id, 100),
         $this->creditEntry($accounts->advertisingAvailable->id, 100),
     ])))->toThrow(InsufficientBalanceException::class);
@@ -244,7 +244,7 @@ test('a failed posting attempt does not poison its business reference for a corr
 
     // A corrected retry under the same reference, using entries that
     // genuinely succeed, must be allowed to proceed fresh.
-    $result = $engine->post($this->postingCommand(type: LedgerTransactionType::AdministrativeAdjustment, businessReference: $reference, entries: [
+    $result = $engine->post($this->postingCommand(type: LedgerTransactionType::FundReservation, businessReference: $reference, entries: [
         $this->debitEntry($clearing->id, 100),
         $this->creditEntry($accounts->earningAvailable->id, 100),
     ]));

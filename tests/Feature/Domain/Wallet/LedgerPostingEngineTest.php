@@ -95,19 +95,19 @@ test('derived balance correctly folds a mixed history of credits and debits', fu
         $this->creditEntry($accounts->earningAvailable->id, 1_000_000),
     ]));
 
-    $engine->post($this->postingCommand(type: LedgerTransactionType::AdministrativeAdjustment, businessReference: 'administrative_adjustment:history-2', entries: [
+    $engine->post($this->postingCommand(type: LedgerTransactionType::FundReservation, businessReference: 'fund_reservation:history-2', entries: [
         $this->creditEntry($clearing->id, 400_000),
         $this->debitEntry($accounts->earningAvailable->id, 400_000),
     ]));
 
     // Balance is now 600,000. Spending 700,000 must fail.
-    expect(fn () => $engine->post($this->postingCommand(type: LedgerTransactionType::AdministrativeAdjustment, businessReference: 'administrative_adjustment:history-3', entries: [
+    expect(fn () => $engine->post($this->postingCommand(type: LedgerTransactionType::FundReservation, businessReference: 'fund_reservation:history-3', entries: [
         $this->creditEntry($clearing->id, 700_000),
         $this->debitEntry($accounts->earningAvailable->id, 700_000),
     ])))->toThrow(InsufficientBalanceException::class);
 
     // Spending exactly 600,000 (down to zero) must succeed.
-    $engine->post($this->postingCommand(type: LedgerTransactionType::AdministrativeAdjustment, businessReference: 'administrative_adjustment:history-4', entries: [
+    $engine->post($this->postingCommand(type: LedgerTransactionType::FundReservation, businessReference: 'fund_reservation:history-4', entries: [
         $this->creditEntry($clearing->id, 600_000),
         $this->debitEntry($accounts->earningAvailable->id, 600_000),
     ]));
@@ -139,9 +139,9 @@ test('the historical entry query is explicitly ordered by created_at then id', f
 test('insufficient balance is rejected for an account that does not allow negative balances', function () {
     $accounts = $this->provisionTestAccounts();
     $engine = new LedgerPostingEngine;
-    $reference = 'administrative_adjustment:insufficient';
+    $reference = 'fund_reservation:insufficient';
 
-    expect(fn () => $engine->post($this->postingCommand(type: LedgerTransactionType::AdministrativeAdjustment, businessReference: $reference, entries: [
+    expect(fn () => $engine->post($this->postingCommand(type: LedgerTransactionType::FundReservation, businessReference: $reference, entries: [
         $this->debitEntry($accounts->earningAvailable->id, 100),
         $this->creditEntry($accounts->advertisingAvailable->id, 100),
     ])))->toThrow(InsufficientBalanceException::class);

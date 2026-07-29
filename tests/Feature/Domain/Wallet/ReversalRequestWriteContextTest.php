@@ -118,7 +118,7 @@ test('the context resets after execute() produces a durable review-required outc
         $this->creditEntry($accounts->earningAvailable->id, 1_000),
     ]))->transaction;
 
-    $engine->post($this->postingCommand(type: LedgerTransactionType::AdministrativeAdjustment, businessReference: 'administrative_adjustment:context-review-required-spend', entries: [
+    $engine->post($this->postingCommand(type: LedgerTransactionType::FundReservation, businessReference: 'fund_reservation:context-review-required-spend', entries: [
         $this->creditEntry($clearing->id, 700),
         $this->debitEntry($accounts->earningAvailable->id, 700),
     ]));

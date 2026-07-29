@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Domain\Wallet\Concerns;
 
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -81,6 +82,34 @@ trait InsertsRawLedgerRowsForTesting
         ], $overrides));
 
         return $id;
+    }
+
+    /**
+     * Raw, test-only audit_events row insertion - used only to simulate
+     * corruption/recovery scenarios (a missing or conflicting audit event
+     * for a replayed administrative adjustment) that AuditEvent::record()
+     * itself would never produce. Auto-increment integer PK, unlike the
+     * other helpers here. actor_id is a non-nullable FK, so a real user
+     * is created when the caller does not supply one.
+     *
+     * @param  array<string, mixed>  $overrides
+     */
+    protected function insertRawAuditEvent(array $overrides = []): int
+    {
+        $actorId = $overrides['actor_id'] ?? User::factory()->create()->id;
+
+        return DB::table('audit_events')->insertGetId(array_merge([
+            'actor_id' => $actorId,
+            'action' => 'ledger.administrative_adjustment',
+            'entity_type' => 'ledger_transaction',
+            'entity_id' => null,
+            'entity_key' => strtolower((string) Str::ulid()),
+            'before_state' => json_encode([]),
+            'after_state' => json_encode([]),
+            'reason' => 'Raw test audit event',
+            'correlation_id' => (string) Str::uuid(),
+            'created_at' => now(),
+        ], $overrides));
     }
 
     /**
