@@ -113,6 +113,36 @@ trait InsertsRawLedgerRowsForTesting
     }
 
     /**
+     * Raw, test-only balance_snapshots row insertion - used only to
+     * simulate corruption/drift scenarios BalanceSnapshotService itself
+     * would never produce (a snapshot whose stored balance/count/
+     * fingerprint no longer matches the real ledger, or whose cutoff
+     * points at the wrong account).
+     *
+     * @param  array<string, mixed>  $overrides
+     */
+    protected function insertRawBalanceSnapshot(array $overrides = []): string
+    {
+        $id = $overrides['id'] ?? strtolower((string) Str::ulid());
+
+        DB::table('balance_snapshots')->insert(array_merge([
+            'id' => $id,
+            'wallet_account_id' => $overrides['wallet_account_id'] ?? $this->insertRawWalletAccount(),
+            'balance_atomic' => 0,
+            'currency_code' => 'USD',
+            'currency_scale' => 6,
+            'cutoff_ledger_entry_id' => null,
+            'cutoff_entry_created_at' => null,
+            'entry_count' => 0,
+            'fingerprint_version' => 1,
+            'fingerprint' => str_repeat('a', 64),
+            'created_at' => now(),
+        ], $overrides));
+
+        return $id;
+    }
+
+    /**
      * @param  array<string, mixed>  $overrides
      */
     protected function insertRawReversalRequest(array $overrides = []): string

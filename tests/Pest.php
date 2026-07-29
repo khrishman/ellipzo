@@ -16,3 +16,9 @@ uses(
     BuildsAdministrativeAdjustmentFixtures::class,
     IsolatesModelEventListenersForTesting::class,
 )->in('Feature/Domain/Wallet');
+uses(
+    InsertsRawLedgerRowsForTesting::class,
+    BuildsLedgerPostingFixtures::class,
+    BuildsReversalRequestFixtures::class,
+    BuildsAdministrativeAdjustmentFixtures::class,
+)->in('Feature/Console');

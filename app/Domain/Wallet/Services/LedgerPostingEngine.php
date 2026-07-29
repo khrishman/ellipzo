@@ -388,12 +388,18 @@ final class LedgerPostingEngine
     /**
      * Folds the account's full entry history in strict chronological order
      * (created_at then id, since same-second timestamps are possible and
-     * the ULID id is itself time-ordered) using Money's own checked
-     * arithmetic - never a raw SQL SUM(), which would need its own,
-     * separately-proven, cross-engine overflow story. A current/locking
-     * read: under REPEATABLE READ, a plain read here could still observe
-     * a stale snapshot from before this transaction's first query, even
-     * after the account row itself was locked.
+     * the ULID id is itself time-ordered) via LedgerBalanceAccumulator -
+     * Task 2.6's own single authoritative place for this arithmetic, never
+     * a raw SQL SUM(). The query, its lockForUpdate() (a
+     * current/locking read: under REPEATABLE READ, a plain read here could
+     * still observe a stale snapshot from before this transaction's first
+     * query, even after the account row itself was locked), and its
+     * ordering are byte-identical to before - only how the result rows are
+     * materialized changed: cursor() instead of get(), so an account with
+     * a very long history no longer requires a fully hydrated Eloquent
+     * Collection in memory. No fingerprint is computed here - passing null
+     * (LedgerBalanceCalculator::fold()'s own default) keeps this hot path
+     * free of any hashing work.
      */
     private function deriveCurrentBalance(WalletAccount $account): Money
     {
@@ -402,19 +408,9 @@ final class LedgerPostingEngine
             ->orderBy('created_at')
             ->orderBy('id')
             ->lockForUpdate()
-            ->get();
+            ->cursor();
 
-        $normalSide = $account->account_type->normalEntrySide();
-        $balance = Money::zero(Currency::USD);
-
-        foreach ($entries as $entry) {
-            $amount = Money::fromAtomic($entry->amount_atomic, Currency::USD);
-            $balance = $entry->entry_type === $normalSide
-                ? $balance->add($amount)
-                : $balance->subtract($amount);
-        }
-
-        return $balance;
+        return LedgerBalanceCalculator::fold($entries, $account->account_type)->balance;
     }
 
     /**
