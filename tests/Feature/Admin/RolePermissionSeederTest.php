@@ -58,6 +58,43 @@ test('only Administrator receives users.status.manage, and users.limit is unaffe
     expect(Role::findByName('administrator')->hasPermissionTo('users.limit'))->toBeTrue();
 });
 
+test('ledger.view and ledger.audit.view are assigned only to Administrator and Finance Operator', function () {
+    (new RolePermissionSeeder)->run();
+
+    expect(Role::findByName('administrator')->hasPermissionTo('ledger.view'))->toBeTrue();
+    expect(Role::findByName('administrator')->hasPermissionTo('ledger.audit.view'))->toBeTrue();
+    expect(Role::findByName('finance-operator')->hasPermissionTo('ledger.view'))->toBeTrue();
+    expect(Role::findByName('finance-operator')->hasPermissionTo('ledger.audit.view'))->toBeTrue();
+
+    expect(Role::findByName('moderator')->hasPermissionTo('ledger.view'))->toBeFalse();
+    expect(Role::findByName('moderator')->hasPermissionTo('ledger.audit.view'))->toBeFalse();
+    expect(Role::findByName('support-agent')->hasPermissionTo('ledger.view'))->toBeFalse();
+    expect(Role::findByName('support-agent')->hasPermissionTo('ledger.audit.view'))->toBeFalse();
+});
+
+test('adding ledger.view/ledger.audit.view does not change ledger.adjust assignments', function () {
+    (new RolePermissionSeeder)->run();
+
+    expect(Role::findByName('administrator')->hasPermissionTo('ledger.adjust'))->toBeTrue();
+    expect(Role::findByName('finance-operator')->hasPermissionTo('ledger.adjust'))->toBeTrue();
+    expect(Role::findByName('moderator')->hasPermissionTo('ledger.adjust'))->toBeFalse();
+    expect(Role::findByName('support-agent')->hasPermissionTo('ledger.adjust'))->toBeFalse();
+});
+
+test('re-seeding after granting ledger.view/ledger.audit.view is idempotent and touches no unrelated assignment', function () {
+    (new RolePermissionSeeder)->run();
+
+    $adminPermissionsBefore = Role::findByName('administrator')->permissions->pluck('name')->sort()->values()->all();
+    $moderatorPermissionsBefore = Role::findByName('moderator')->permissions->pluck('name')->sort()->values()->all();
+    $permissionCountBefore = Permission::count();
+
+    (new RolePermissionSeeder)->run();
+
+    expect(Role::findByName('administrator')->permissions->pluck('name')->sort()->values()->all())->toBe($adminPermissionsBefore);
+    expect(Role::findByName('moderator')->permissions->pluck('name')->sort()->values()->all())->toBe($moderatorPermissionsBefore);
+    expect(Permission::count())->toBe($permissionCountBefore);
+});
+
 test('the seeder clears the Spatie permission cache', function () {
     $registrar = app(PermissionRegistrar::class);
     $cache = $registrar->getCacheRepository();

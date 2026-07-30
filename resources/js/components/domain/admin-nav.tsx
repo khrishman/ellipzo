@@ -6,6 +6,7 @@ import {
     LifeBuoy,
     Megaphone,
     Plug,
+    Receipt,
     ScrollText,
     Settings,
     ShieldAlert,
@@ -21,6 +22,7 @@ import type { NavItem } from '@/types/nav';
 const adminNavItems: NavItem[] = [
     { label: 'Overview', href: '/admin', icon: LayoutDashboard, requiredPermission: 'admin.overview.view' },
     { label: 'Staff Access', href: '/admin/staff-access', icon: ShieldCheck, requiredPermission: 'staff.view' },
+    { label: 'Ledger', href: '/admin/ledger', icon: Receipt, requiredPermission: 'ledger.view' },
     { label: 'Users', href: '/admin/users', icon: Users, requiredPermission: 'users.view', implemented: false },
     { label: 'Campaigns', href: '/admin/campaigns', icon: Megaphone, requiredPermission: 'campaigns.moderate', implemented: false },
     { label: 'Submissions', href: '/admin/submissions', icon: SquareCheck, requiredPermission: 'submissions.moderate', implemented: false },

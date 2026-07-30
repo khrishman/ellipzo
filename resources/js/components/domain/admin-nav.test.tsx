@@ -48,6 +48,22 @@ describe('AdminNav', () => {
         expect(screen.getByRole('link', { name: /overview/i })).toHaveAttribute('aria-current', 'page');
     });
 
+    it('renders the Ledger item only when ledger.view is present, linking to /admin/ledger', () => {
+        render(<AdminNav permissions={['ledger.view']} />);
+
+        const link = screen.getByRole('link', { name: /ledger/i });
+        expect(link).toHaveAttribute('href', '/admin/ledger');
+        // A real, working item - never rendered with the "Soon" badge.
+        expect(screen.queryByText(/soon/i)).not.toBeInTheDocument();
+    });
+
+    it('does not render the Ledger item without ledger.view', () => {
+        render(<AdminNav permissions={['admin.overview.view', 'staff.view']} />);
+
+        expect(screen.queryByRole('link', { name: /ledger/i })).not.toBeInTheDocument();
+        expect(screen.queryByText(/^ledger$/i)).not.toBeInTheDocument();
+    });
+
     it('renders unimplemented sections as disabled, non-interactive items rather than links', () => {
         render(<AdminNav permissions={['users.view', 'campaigns.moderate', 'audit.view']} />);
 

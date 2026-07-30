@@ -28,7 +28,7 @@ class RolePermissionSeeder extends Seeder
 {
     private const GUARD = 'web';
 
-    /** Permissions Task 9/10/2.5.1 actually enforce. */
+    /** Permissions Task 9/10/2.5.1/2.8 actually enforce. */
     private const ACTIVE_PERMISSIONS = [
         'admin.overview.view',
         'staff.view',
@@ -36,6 +36,8 @@ class RolePermissionSeeder extends Seeder
         'audit.view',
         'users.status.manage',
         'ledger.adjust',
+        'ledger.view',
+        'ledger.audit.view',
     ];
 
     /** Referenced by prd.md/Architecture.md/admin-nav.tsx; not yet enforced anywhere. */
@@ -61,14 +63,14 @@ class RolePermissionSeeder extends Seeder
             'admin.overview.view', 'staff.view', 'staff.manage', 'audit.view',
             'users.view', 'users.limit', 'users.status.manage', 'campaigns.moderate', 'submissions.moderate',
             'disputes.resolve', 'deposits.review', 'withdrawals.review',
-            'withdrawals.approve', 'ledger.adjust', 'settings.manage', 'support.view',
+            'withdrawals.approve', 'ledger.adjust', 'ledger.view', 'ledger.audit.view', 'settings.manage', 'support.view',
         ],
         'moderator' => [
             'admin.overview.view', 'campaigns.moderate', 'submissions.moderate', 'disputes.resolve',
         ],
         'finance-operator' => [
             'admin.overview.view', 'deposits.review', 'withdrawals.review',
-            'withdrawals.approve', 'ledger.adjust',
+            'withdrawals.approve', 'ledger.adjust', 'ledger.view', 'ledger.audit.view',
         ],
         'support-agent' => [
             'admin.overview.view', 'support.view',

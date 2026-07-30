@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminLedgerController;
 use App\Http\Controllers\Admin\AdminOverviewController;
 use App\Http\Controllers\Admin\StaffAccessController;
 use Illuminate\Support\Facades\Route;
@@ -19,6 +20,20 @@ Route::middleware(['auth', 'account.protected', 'verified'])->prefix('admin')->n
     Route::get('/staff-access', [StaffAccessController::class, 'show'])
         ->middleware('permission:staff.view')
         ->name('staff-access.show');
+
+    // Read-only only: no POST/PATCH/DELETE route exists anywhere for the
+    // ledger explorer. permission:ledger.view runs before route-model
+    // binding resolves {ledgerTransaction} (verified via reflection on the
+    // live middleware priority list - see AdminLedgerController's own
+    // docblock), so an unauthorized request gets 403 without ever
+    // revealing whether the requested ID exists.
+    Route::get('/ledger', [AdminLedgerController::class, 'index'])
+        ->middleware('permission:ledger.view')
+        ->name('ledger.index');
+
+    Route::get('/ledger/{ledgerTransaction}', [AdminLedgerController::class, 'show'])
+        ->middleware('permission:ledger.view')
+        ->name('ledger.show');
 
     // Order matters: permission authorization must run before the
     // throttle, so an unauthorized attempt is always rejected as 403
