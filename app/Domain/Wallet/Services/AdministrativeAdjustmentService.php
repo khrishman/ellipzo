@@ -62,6 +62,23 @@ final class AdministrativeAdjustmentService
         private readonly WalletAccountProvisioner $walletAccountProvisioner,
     ) {}
 
+    /**
+     * $attempts = 3, mirroring WalletAccountProvisioner::provisionUserAccounts():
+     * two genuinely concurrent submit() calls for the same idempotency key
+     * both lazily provision platform_suspense (a single shared row) via
+     * resolveAccount()'s own insert-then-catch path, inside this same open
+     * transaction. MySQL/InnoDB can detect a real lock-cycle deadlock on
+     * that shared insert (SQLSTATE 40001), which forces a full rollback of
+     * this entire transaction - retrying only a later statement is not an
+     * option, the whole callback must re-run from scratch. Confirmed
+     * empirically via Task 2.9's real two-connection MySQL 8 concurrency
+     * proof (tests/Concurrency/Scenarios/ConcurrentAdjustmentReplayTest.php) -
+     * reproduced deterministically (3/3 runs) without this, zero failures
+     * across repeated runs with it. Safe to retry: LedgerWriteContext and
+     * AdministrativeAdjustmentWriteContext both use a depth counter
+     * (increment/decrement in try/finally), so a fresh re-entry on retry
+     * always starts and ends clean.
+     */
     public function submit(SubmitAdministrativeAdjustmentCommand $command): AdministrativeAdjustmentResult
     {
         // Cheap, no-DB-write checks first - a denied caller never opens a
@@ -96,7 +113,7 @@ final class AdministrativeAdjustmentService
                     return new AdministrativeAdjustmentResult($posted->transaction, $auditEvent, $posted->wasReplay);
                 });
             });
-        });
+        }, attempts: 3);
     }
 
     private function assertAuthorized(User $actor): void
@@ -215,6 +232,14 @@ final class AdministrativeAdjustmentService
      * fully committed call. The matching audit event must already exist;
      * a missing or mismatched row here is a genuine invariant failure,
      * never silently repaired or reinserted.
+     *
+     * lockForUpdate() here, not a plain read: under REPEATABLE READ, this
+     * connection's transaction snapshot may have been established before
+     * the other connection committed its audit_events insert - a plain
+     * read could then genuinely (and wrongly) find nothing yet, exactly
+     * the same class of gap fixed in LedgerPostingEngine's own replay
+     * reconciliation. Confirmed empirically via Task 2.9's real
+     * two-connection MySQL 8 concurrency proof.
      */
     private function reconcileReplayedAudit(
         SubmitAdministrativeAdjustmentCommand $command,
@@ -225,6 +250,7 @@ final class AdministrativeAdjustmentService
             ->where('entity_type', self::ENTITY_TYPE)
             ->where('entity_key', $transaction->id)
             ->where('action', self::ACTION)
+            ->lockForUpdate()
             ->first();
 
         if ($existing === null) {

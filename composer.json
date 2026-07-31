@@ -59,6 +59,10 @@
             "@php artisan config:clear --ansi @no_additional_args",
             "@php artisan test"
         ],
+        "test:mysql-concurrency": [
+            "@php artisan config:clear --ansi",
+            "@php tests/Concurrency/bin/run-concurrency-suite.php"
+        ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"

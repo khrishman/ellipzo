@@ -52,12 +52,29 @@ final class WalletAccountProvisioner
      * participate in earning and advertising, atomically, in its own
      * self-transacting call. The only entry point a caller without an
      * already-open transaction should use.
+     *
+     * $attempts = 3: two genuinely concurrent callers provisioning the
+     * same new user both insert the same 4 rows, in the same fixed order,
+     * inside one open transaction each - MySQL/InnoDB can detect a real
+     * lock-cycle deadlock across those still-uncommitted multi-row inserts
+     * into the same unique index (SQLSTATE 40001), not just a plain
+     * already-committed UniqueConstraintViolationException that
+     * resolveAccount() already recovers from. A deadlock forces MySQL to
+     * roll back the *entire* transaction, so retrying only the failed
+     * statement is not an option - the whole callback must re-run from
+     * scratch, exactly what Laravel's own $attempts mechanism does
+     * (Illuminate\Database\Concerns\ManagesTransactions::transaction(),
+     * detecting the same SQLSTATE via ConcurrencyErrorDetector). Confirmed
+     * empirically via Task 2.9's real two-connection MySQL 8 concurrency
+     * proof (tests/Concurrency/Scenarios/ConcurrentWalletProvisioningTest.php) -
+     * reproduced the deadlock deterministically without this, zero
+     * failures across 20 repeated runs with it.
      */
     public function provisionUserAccounts(User $user): UserWalletAccounts
     {
         return DB::transaction(function () use ($user): UserWalletAccounts {
             return $this->provisionUserAccountsCore($user);
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -216,17 +233,32 @@ final class WalletAccountProvisioner
 
             return $account;
         } catch (UniqueConstraintViolationException $exception) {
+            // lockForUpdate() deliberately, not a plain SELECT: InnoDB's
+            // own uniqueness check on the failed insert above evaluates
+            // against the *current* (uncommitted-visible) data regardless
+            // of isolation level, but this transaction's own REPEATABLE
+            // READ snapshot may have been established earlier (e.g. this
+            // method's own preflight query) and would then legitimately
+            // not yet show a row the other transaction only just
+            // committed. A locking read always reads the latest committed
+            // version, sidestepping that snapshot gap - confirmed
+            // empirically via Task 2.9's real two-connection MySQL 8
+            // concurrency proof, which reproduced exactly this "existing
+            // row not found immediately after a genuine unique-constraint
+            // conflict" case under real concurrent load.
             $existing = WalletAccount::query()
                 ->where('scope_type', $scope->value)
                 ->where('scope_key', $scopeKey)
                 ->where('account_type', $type->value)
                 ->where('currency_code', Currency::USD->value)
+                ->lockForUpdate()
                 ->first();
 
             if ($existing === null) {
                 // The conflict was real but the canonical identity row
-                // doesn't exist - an unexplained anomaly, never
-                // reinterpreted as a known invariant violation.
+                // still doesn't exist even under a locking read - a
+                // genuine unexplained anomaly, never reinterpreted as a
+                // known invariant violation.
                 throw $exception;
             }
 

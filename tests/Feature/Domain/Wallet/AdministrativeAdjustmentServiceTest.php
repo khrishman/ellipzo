@@ -22,6 +22,7 @@ use App\Domain\Wallet\Services\WalletAccountProvisioner;
 use App\Enums\AccountStatus;
 use App\Models\AuditEvent;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Spatie\Permission\Exceptions\UnauthorizedException;
 
@@ -216,6 +217,42 @@ test('a decrease exceeding the available balance is rejected with zero new rows 
     expect(LedgerTransaction::count())->toBe($transactionCountBefore);
     expect(LedgerEntry::count())->toBe($entryCountBefore);
     expect(AuditEvent::count())->toBe(0);
+});
+
+test('a domain-invariant exception is never retried despite submit own attempts:3, real DB query count proves exactly one attempt', function () {
+    // Added during the Task 2.9 final audit's retry-behavior audit, per
+    // explicit instruction not to mock away the database behavior being
+    // tested: submit() wraps its body in DB::transaction($callback,
+    // attempts: 3) so a genuine MySQL deadlock (SQLSTATE 40001) is
+    // retried up to 3 times - but Laravel's own causedByConcurrencyError()
+    // only matches PDO/QueryException-shaped driver errors, never a plain
+    // application exception like InsufficientBalanceException, so this
+    // proves the callback body genuinely executes only once by counting a
+    // real SQL statement lockAccountsInOrder() issues exactly once per
+    // attempt, not by asserting behavior indirectly.
+    $actor = $this->ledgerAdjustActor();
+    $target = User::factory()->create();
+    $accounts = (new WalletAccountProvisioner)->provisionUserAccounts($target);
+    $this->fundAccount($accounts->earningAvailable, 5_000_000);
+
+    $lockSelectCount = 0;
+
+    DB::listen(function ($query) use (&$lockSelectCount, $accounts): void {
+        if (str_starts_with(trim(strtolower($query->sql)), 'select')
+            && str_contains($query->sql, 'wallet_accounts')
+            && in_array($accounts->earningAvailable->id, $query->bindings, true)
+        ) {
+            $lockSelectCount++;
+        }
+    });
+
+    expect(fn () => app(AdministrativeAdjustmentService::class)->submit(
+        $this->adjustmentCommand($actor, $target, WalletAccountType::EarningAvailable, AdministrativeAdjustmentDirection::Decrease, 50_000_000),
+    ))->toThrow(InsufficientBalanceException::class);
+
+    // Exactly one lock-select query touched the target account - if
+    // attempts:3 had retried a domain exception, this would be 3.
+    expect($lockSelectCount)->toBe(1);
 });
 
 test('arithmetic overflow during balance derivation propagates the existing MoneyOverflowException', function () {

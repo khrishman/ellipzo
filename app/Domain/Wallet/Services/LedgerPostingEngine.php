@@ -236,9 +236,23 @@ final class LedgerPostingEngine
         array $expectedEntries,
         UniqueConstraintViolationException $exception,
     ): PostedLedgerTransaction {
+        // The eager-loaded 'entries' relation must be its own locking read,
+        // not a plain one: lockForUpdate() on the outer query only forces a
+        // current (not snapshot) read for ledger_transactions itself - the
+        // separate query Eloquent issues for the entries relation is a
+        // plain read by default, which under REPEATABLE READ can still
+        // return this transaction's *earlier* snapshot (e.g. from this
+        // same transaction's own preflight query), genuinely missing
+        // another connection's entries that were committed only after that
+        // snapshot was established - even though the row itself, read here
+        // with a locking read, is correctly the latest version. Confirmed
+        // empirically via Task 2.9's real two-connection MySQL 8
+        // concurrency proof: an otherwise-genuine replay was misclassified
+        // as DuplicateFinancialEventException because entriesMatch() was
+        // comparing against a stale (empty) entries snapshot.
         $existing = LedgerTransaction::query()
             ->where('business_reference', $businessReference)
-            ->with('entries')
+            ->with(['entries' => fn ($query) => $query->lockForUpdate()])
             ->lockForUpdate()
             ->first();
 
@@ -573,17 +587,23 @@ final class LedgerPostingEngine
             ->all();
     }
 
+    /**
+     * Same locking-eager-load reasoning as reconcileGenericReplay(): the
+     * 'entries' relation query must also be a locking read, or it can
+     * observe a stale (pre-commit) snapshot of another connection's
+     * just-committed reversal under REPEATABLE READ.
+     */
     private function findExistingReversal(string $businessReference, string $originalId): ?LedgerTransaction
     {
         $existing = LedgerTransaction::query()
             ->where('business_reference', $businessReference)
-            ->with('entries')
+            ->with(['entries' => fn ($query) => $query->lockForUpdate()])
             ->lockForUpdate()
             ->first();
 
         return $existing ?? LedgerTransaction::query()
             ->where('reverses_transaction_id', $originalId)
-            ->with('entries')
+            ->with(['entries' => fn ($query) => $query->lockForUpdate()])
             ->lockForUpdate()
             ->first();
     }

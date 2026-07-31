@@ -226,6 +226,48 @@ test('pre-existing invalid partial state (canonical scope/key, different user_id
     expect(WalletAccount::where('user_id', $userA->id)->count())->toBe(0);
 });
 
+test('a domain-invariant exception is never retried despite provisionUserAccounts own attempts:3, real DB query count proves exactly one attempt', function () {
+    // Added during the Task 2.9 final audit's retry-behavior audit, per
+    // explicit instruction not to mock away the database behavior being
+    // tested: provisionUserAccounts() wraps its body in
+    // DB::transaction($callback, attempts: 3) so a genuine MySQL deadlock
+    // (SQLSTATE 40001) is retried up to 3 times - but Laravel's own
+    // causedByConcurrencyError() only matches PDO/QueryException-shaped
+    // driver errors, never a plain application exception like
+    // WalletAccountInvariantException, so this proves the callback body
+    // genuinely executes only once by counting real SQL statements, not
+    // by asserting behavior indirectly.
+    $user = User::factory()->create();
+    $provisioner = new WalletAccountProvisioner;
+
+    $malformed = new WalletAccount;
+    $malformed->scope_type = WalletAccountScopeType::User;
+    $malformed->scope_key = 'some-other-key';
+    $malformed->user_id = $user->id;
+    $malformed->account_type = WalletAccountType::EarningHeld;
+    $malformed->currency_code = Currency::USD;
+    $malformed->currency_scale = Currency::USD->scale();
+    $malformed->save();
+
+    $candidateSelectCount = 0;
+
+    DB::listen(function ($query) use (&$candidateSelectCount, $user): void {
+        if (str_starts_with(trim(strtolower($query->sql)), 'select')
+            && str_contains($query->sql, 'wallet_accounts')
+            && in_array($user->id, $query->bindings, true)
+        ) {
+            $candidateSelectCount++;
+        }
+    });
+
+    expect(fn () => $provisioner->provisionUserAccounts($user))
+        ->toThrow(WalletAccountInvariantException::class);
+
+    // Exactly one preflight candidate-select query ran for this user -
+    // if attempts:3 had retried a domain exception, this would be 3.
+    expect($candidateSelectCount)->toBe(1);
+});
+
 test('a wrong currency scale on a pre-existing account is detected before any insert', function () {
     $user = User::factory()->create();
     $provisioner = new WalletAccountProvisioner;

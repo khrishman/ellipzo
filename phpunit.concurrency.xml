@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Task 2.9's opt-in MySQL 8 concurrency suite. A separate file, never
+    merged into phpunit.xml - PHPUnit's <php><env> block applies to the
+    whole process, not per-suite, so the default suite's SQLite-only,
+    Docker-independent guarantee can only be preserved by keeping this
+    entirely separate. The outer DB_CONNECTION below is still sqlite/:memory:
+    (defense-in-depth, same reasoning as phpunit.xml itself): every
+    concurrency test explicitly says DB::connection('mysql_concurrency') for
+    its own queries, so any code path that forgets to do so fails safe
+    against disposable SQLite, never against real MariaDB.
+
+    Run via: composer test:mysql-concurrency (never phpunit.xml's own
+    `composer test` / `php artisan test`, which never load this file).
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+>
+    <testsuites>
+        <testsuite name="Concurrency">
+            <directory>tests/Concurrency</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>app</directory>
+        </include>
+    </source>
+    <php>
+        <env name="APP_ENV" value="testing"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
+        <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="BROADCAST_CONNECTION" value="null"/>
+        <env name="CACHE_STORE" value="array"/>
+        <env name="DB_CONNECTION" value="sqlite"/>
+        <env name="DB_DATABASE" value=":memory:"/>
+        <env name="DB_URL" value=""/>
+        <env name="GOOGLE_CLIENT_ID" value="test-google-client-id"/>
+        <env name="GOOGLE_CLIENT_SECRET" value="test-google-client-secret"/>
+        <env name="GOOGLE_REDIRECT_URI" value="http://localhost/auth/google/callback"/>
+        <env name="MAIL_MAILER" value="array"/>
+        <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="SESSION_DRIVER" value="database"/>
+        <env name="PULSE_ENABLED" value="false"/>
+        <env name="TELESCOPE_ENABLED" value="false"/>
+        <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="RUN_MYSQL_CONCURRENCY_TESTS" value="1"/>
+    </php>
+</phpunit>
